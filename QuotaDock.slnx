@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/QuotaDock.App/QuotaDock.App.csproj" />
+    <Project Path="src/QuotaDock.Cli/QuotaDock.Cli.csproj" />
+    <Project Path="src/QuotaDock.Connectors/QuotaDock.Connectors.csproj" />
+    <Project Path="src/QuotaDock.Core/QuotaDock.Core.csproj" />
+    <Project Path="src/QuotaDock.Infrastructure/QuotaDock.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/QuotaDock.Connectors.Tests/QuotaDock.Connectors.Tests.csproj" />
+    <Project Path="tests/QuotaDock.Core.Tests/QuotaDock.Core.Tests.csproj" />
+    <Project Path="tests/QuotaDock.Infrastructure.Tests/QuotaDock.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

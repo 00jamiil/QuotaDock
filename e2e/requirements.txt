@@ -1,0 +1,6 @@
+pywinauto==0.6.9
+pytest==9.0.3
+pytest-html==4.1.1
+pytest-timeout==2.4.0
+Pillow==11.3.0
+

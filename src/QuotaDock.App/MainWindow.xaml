@@ -1,0 +1,267 @@
+<Window
+    x:Class="QuotaDock.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="QuotaDock"
+    mc:Ignorable="d">
+
+    <Grid
+        x:Name="WidgetRoot"
+        AutomationProperties.AutomationId="WidgetRoot"
+        AutomationProperties.Name="QuotaDock usage widget"
+        Background="{StaticResource QuotaDockCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="52" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="42" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Padding="14,10,10,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Grid x:Name="DragRegion" Grid.Column="0" Background="Transparent">
+                <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="9">
+                    <Border Width="22" Height="22" CornerRadius="7" Background="{StaticResource QuotaDockAccentBrush}">
+                        <FontIcon
+                            FontSize="12"
+                            Foreground="#10221D"
+                            Glyph="&#xE9D9;"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock
+                        Text="QUOTADOCK"
+                        FontFamily="Segoe UI Variable Display"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        CharacterSpacing="120"
+                        Foreground="{StaticResource QuotaDockTextBrush}"
+                        VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <Button
+                x:Name="RefreshButton"
+                Grid.Column="1"
+                AutomationProperties.AutomationId="RefreshButton"
+                AutomationProperties.Name="Refresh usage"
+                Click="RefreshButton_Click"
+                Style="{StaticResource HeaderIconButtonStyle}"
+                ToolTipService.ToolTip="Refresh usage">
+                <FontIcon FontSize="14" Glyph="&#xE72C;" />
+            </Button>
+            <Button
+                x:Name="PinButton"
+                Grid.Column="2"
+                AutomationProperties.AutomationId="PinButton"
+                AutomationProperties.Name="Pin widget always on top"
+                Click="PinButton_Click"
+                Style="{StaticResource HeaderIconButtonStyle}"
+                ToolTipService.ToolTip="Pin always on top">
+                <FontIcon x:Name="PinIcon" FontSize="14" Glyph="&#xE840;" />
+            </Button>
+            <Button
+                x:Name="SettingsButton"
+                Grid.Column="3"
+                AutomationProperties.AutomationId="SettingsButton"
+                AutomationProperties.Name="Open settings"
+                Click="SettingsButton_Click"
+                Style="{StaticResource HeaderIconButtonStyle}"
+                ToolTipService.ToolTip="Connections and settings">
+                <FontIcon FontSize="14" Glyph="&#xE713;" />
+            </Button>
+        </Grid>
+
+        <Border
+            Grid.Row="1"
+            Margin="14,2,14,10"
+            Padding="13,10"
+            Background="{StaticResource QuotaDockSurfaceBrush}"
+            BorderBrush="#2B3341"
+            BorderThickness="1"
+            CornerRadius="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Ellipse x:Name="HealthDot" Width="7" Height="7" Fill="{StaticResource QuotaDockMutedBrush}" VerticalAlignment="Center" />
+                <TextBlock
+                    x:Name="StatusLabel"
+                    Grid.Column="1"
+                    Margin="9,0,0,0"
+                    AutomationProperties.AutomationId="StatusLabel"
+                    Text="Connect a provider to begin"
+                    FontSize="12"
+                    Foreground="{StaticResource QuotaDockMutedBrush}"
+                    TextTrimming="CharacterEllipsis" />
+            </Grid>
+        </Border>
+
+        <ListView
+            x:Name="MetricList"
+            Grid.Row="2"
+            Margin="8,0"
+            Padding="6,0"
+            AutomationProperties.AutomationId="MetricList"
+            AutomationProperties.Name="Pinned usage metrics"
+            IsItemClickEnabled="False"
+            IsTabStop="False"
+            SelectionMode="None">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0,0,0,8" />
+                    <Setter Property="CornerRadius" Value="12" />
+                    <Setter Property="IsTabStop" Value="False" />
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Border
+                        Padding="14,12"
+                        AutomationProperties.Name="{Binding AutomationName}"
+                        Background="{StaticResource QuotaDockSurfaceBrush}"
+                        BorderBrush="#2B3341"
+                        BorderThickness="1"
+                        CornerRadius="12">
+                        <Grid RowSpacing="7">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock
+                                        Text="{Binding Provider}"
+                                        FontSize="10"
+                                        FontWeight="SemiBold"
+                                        CharacterSpacing="100"
+                                        Foreground="{StaticResource QuotaDockAccentBrush}" />
+                                    <TextBlock
+                                        Text="{Binding Label}"
+                                        Margin="0,2,0,0"
+                                        FontSize="14"
+                                        FontWeight="SemiBold"
+                                        Foreground="{StaticResource QuotaDockTextBrush}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Text="{Binding Value}"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Foreground="{StaticResource QuotaDockTextBrush}"
+                                    VerticalAlignment="Bottom" />
+                            </Grid>
+                            <ProgressBar
+                                Grid.Row="1"
+                                Height="5"
+                                Minimum="0"
+                                Maximum="100"
+                                Value="{Binding ProgressPercent}"
+                                Opacity="{Binding ProgressOpacity}"
+                                Foreground="{StaticResource QuotaDockAccentBrush}"
+                                Background="#303848" />
+                            <TextBlock
+                                Grid.Row="2"
+                                Text="{Binding Detail}"
+                                FontSize="11"
+                                Foreground="{StaticResource QuotaDockMutedBrush}" />
+                            <Grid Grid.Row="3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Text="{Binding Account}"
+                                    FontSize="10"
+                                    Foreground="{StaticResource QuotaDockMutedBrush}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Text="{Binding Reset}"
+                                    FontSize="10"
+                                    Foreground="{StaticResource QuotaDockMutedBrush}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <Grid Grid.Row="2" x:Name="EmptyState" Margin="28,8,28,20">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                <FontIcon Glyph="&#xE945;" FontSize="24" Foreground="{StaticResource QuotaDockMutedBrush}" />
+                <TextBlock
+                    Text="Your AI limits, one glance away."
+                    FontSize="15"
+                    FontWeight="SemiBold"
+                    Foreground="{StaticResource QuotaDockTextBrush}"
+                    TextAlignment="Center" />
+                <TextBlock
+                    Text="Open settings to connect Codex, Claude, OpenAI API, Anthropic API, or Alibaba Token Plan."
+                    FontSize="12"
+                    Foreground="{StaticResource QuotaDockMutedBrush}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+                <Button
+                    AutomationProperties.AutomationId="EmptyStateConnectButton"
+                    AutomationProperties.Name="Connect a provider"
+                    Content="Connect provider"
+                    Click="SettingsButton_Click"
+                    HorizontalAlignment="Center"
+                    Margin="0,5,0,0"
+                    CornerRadius="8" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="3" Padding="15,4,8,7">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="FreshnessLabel"
+                Text="No local snapshots"
+                FontSize="11"
+                Foreground="{StaticResource QuotaDockMutedBrush}"
+                VerticalAlignment="Center" />
+            <TextBlock
+                Grid.Column="1"
+                Text="LOCAL ONLY"
+                FontSize="10"
+                FontWeight="SemiBold"
+                CharacterSpacing="110"
+                Foreground="{StaticResource QuotaDockAccentBrush}"
+                VerticalAlignment="Center" />
+            <Button
+                Grid.Column="2"
+                AutomationProperties.AutomationId="DetailsButton"
+                AutomationProperties.Name="Open usage details"
+                Content="Details"
+                Click="SettingsButton_Click"
+                Margin="8,0,0,0"
+                Padding="8,2"
+                FontSize="11"
+                CornerRadius="6" />
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,56 @@
+<Window
+    x:Class="QuotaDock.App.DashboardReaderWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="QuotaDock — Isolated provider reader">
+
+    <Grid Background="{StaticResource QuotaDockCanvasBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid Padding="16,12" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock
+                    x:Name="ReaderTitle"
+                    FontSize="17"
+                    FontWeight="SemiBold"
+                    Foreground="{StaticResource QuotaDockTextBrush}" />
+                <TextBlock
+                    Text="Cookies stay in this provider-only WebView2 profile. Raw pages are never saved."
+                    FontSize="11"
+                    Foreground="{StaticResource QuotaDockMutedBrush}" />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                AutomationProperties.AutomationId="CaptureUsageButton"
+                Content="Read visible usage"
+                Click="Capture_Click"
+                VerticalAlignment="Center" />
+            <Button
+                Grid.Column="2"
+                Content="Close"
+                Click="Close_Click"
+                VerticalAlignment="Center" />
+        </Grid>
+        <InfoBar
+            x:Name="ReaderStatus"
+            Grid.Row="1"
+            Margin="16,0,16,8"
+            IsOpen="True"
+            IsClosable="False"
+            Severity="Informational"
+            Message="Sign in, open the provider's usage page, then choose Read visible usage." />
+        <WebView2
+            x:Name="Browser"
+            Grid.Row="2"
+            AutomationProperties.AutomationId="ProviderWebView"
+            AutomationProperties.Name="Isolated provider sign-in and usage page" />
+    </Grid>
+</Window>
