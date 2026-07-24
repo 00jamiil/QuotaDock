@@ -22,3 +22,6 @@ __pycache__/
 *.trx
 downloads/**/*.zip
 downloads/**/*.msix
+# Extracted portable staging folders (only the zip/msix belong in downloads).
+downloads/latest/*/
+downloads/archive/**/*/

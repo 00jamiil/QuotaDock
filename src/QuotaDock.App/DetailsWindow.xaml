@@ -2,21 +2,25 @@
     x:Class="QuotaDock.App.DetailsWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     Title="QuotaDock — Usage details">
 
     <Grid
         x:Name="DetailsRoot"
         AutomationProperties.AutomationId="DetailsRoot"
         AutomationProperties.Name="QuotaDock usage details and connections"
-        Background="{StaticResource QuotaDockCanvasBrush}">
+        Background="{StaticResource QuotaDockCanvasBrush}"
+        CornerRadius="{StaticResource QuotaDockWindowCorner}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Padding="24,20,24,14">
+        <Grid Padding="24,20,24,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
@@ -35,219 +39,49 @@
             </StackPanel>
             <Button
                 Grid.Column="1"
+                AutomationProperties.AutomationId="AutoDetectButton"
+                AutomationProperties.Name="Auto-detect providers and models"
+                Click="AutoDetect_Click"
+                Padding="14,7"
+                Margin="0,0,8,0"
+                CornerRadius="{StaticResource QuotaDockPillCorner}"
+                VerticalAlignment="Center"
+                ToolTipService.ToolTip="Scan for installed Codex and Claude and connect them automatically">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon FontSize="13" Glyph="&#xE773;" />
+                    <TextBlock Text="Auto-detect" FontSize="13" />
+                </StackPanel>
+            </Button>
+            <Button
+                Grid.Column="2"
                 AutomationProperties.AutomationId="DetailsRefreshButton"
                 AutomationProperties.Name="Refresh all providers"
                 Content="Refresh all"
                 Click="RefreshAll_Click"
                 Padding="14,7"
-                CornerRadius="8"
+                CornerRadius="{StaticResource QuotaDockPillCorner}"
                 VerticalAlignment="Center" />
         </Grid>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Padding="24,4,24,28" Spacing="18">
-                <InfoBar
-                    x:Name="StatusBar"
-                    IsOpen="False"
-                    IsClosable="True"
-                    Severity="Informational" />
+        <InfoBar
+            x:Name="StatusBar"
+            Grid.Row="1"
+            Margin="24,0,24,8"
+            CornerRadius="{StaticResource QuotaDockCardCorner}"
+            IsOpen="False"
+            IsClosable="True"
+            Severity="Informational" />
 
-                <Border
-                    Padding="18"
-                    Background="{StaticResource QuotaDockSurfaceBrush}"
-                    BorderBrush="#2B3341"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="12">
-                        <TextBlock
-                            Text="CONNECT PROVIDERS"
-                            FontSize="11"
-                            FontWeight="SemiBold"
-                            CharacterSpacing="110"
-                            Foreground="{StaticResource QuotaDockMutedBrush}" />
-                        <TextBlock
-                            Text="API keys are saved only in Windows Credential Manager. Claude sign-in uses your default browser; Alibaba uses an isolated provider profile."
-                            FontSize="12"
-                            TextWrapping="Wrap"
-                            Foreground="{StaticResource QuotaDockMutedBrush}" />
-
-                        <!-- Primary provider: local Codex is the default experience. -->
-                        <Button
-                            AutomationProperties.AutomationId="ConnectCodexButton"
-                            Click="ConnectCodex_Click"
-                            HorizontalAlignment="Stretch"
-                            Padding="14,12"
-                            Background="{StaticResource QuotaDockAccentBrush}">
-                            <StackPanel>
-                                <TextBlock
-                                    Text="Set up local Codex"
-                                    FontSize="14"
-                                    FontWeight="SemiBold" />
-                                <TextBlock
-                                    Text="Recommended · reads your installed Codex CLI usage"
-                                    FontSize="11"
-                                    Opacity="0.85" />
-                            </StackPanel>
-                        </Button>
-
-                        <StackPanel
-                            x:Name="OptionalProvidersPanel"
-                            AutomationProperties.AutomationId="OptionalProvidersPanel"
-                            Spacing="8">
-                            <ToggleButton
-                                x:Name="OptionalProvidersToggle"
-                                AutomationProperties.AutomationId="OptionalProvidersToggle"
-                                AutomationProperties.Name="Show optional providers"
-                                Content="Optional providers"
-                                IsChecked="False"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                Padding="12,8"
-                                Checked="OptionalProviders_Toggled"
-                                Unchecked="OptionalProviders_Toggled" />
-                            <StackPanel
-                                x:Name="OptionalProvidersContent"
-                                Spacing="8"
-                                Visibility="Collapsed">
-                                <TextBlock
-                                    Text="Enable these only if you use them. Each needs its own sign-in or key."
-                                    FontSize="11"
-                                    TextWrapping="Wrap"
-                                    Foreground="{StaticResource QuotaDockMutedBrush}" />
-                                <Grid ColumnSpacing="8" RowSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Button
-                                        AutomationProperties.AutomationId="ConnectCompatibleButton"
-                                        Content="Add OpenAI-compatible provider"
-                                        Click="ConnectCompatible_Click"
-                                        HorizontalAlignment="Stretch" />
-                                    <Button
-                                        Grid.Column="1"
-                                        AutomationProperties.AutomationId="ConnectClaudeButton"
-                                        Content="Connect Claude in browser"
-                                        Click="ConnectClaude_Click"
-                                        HorizontalAlignment="Stretch" />
-                                    <Button
-                                        Grid.Row="1"
-                                        AutomationProperties.AutomationId="ImportClaudeButton"
-                                        Content="Import copied Claude usage"
-                                        Click="ImportClaude_Click"
-                                        HorizontalAlignment="Stretch" />
-                                    <Button
-                                        Grid.Row="1"
-                                        Grid.Column="1"
-                                        AutomationProperties.AutomationId="ConnectOpenAiButton"
-                                        Content="OpenAI organization API"
-                                        Click="ConnectOpenAi_Click"
-                                        HorizontalAlignment="Stretch" />
-                                    <Button
-                                        Grid.Row="2"
-                                        AutomationProperties.AutomationId="ConnectAnthropicButton"
-                                        Content="Anthropic organization API"
-                                        Click="ConnectAnthropic_Click"
-                                        HorizontalAlignment="Stretch" />
-                                    <Button
-                                        Grid.Row="2"
-                                        Grid.Column="1"
-                                        AutomationProperties.AutomationId="ConnectAlibabaButton"
-                                        Content="Alibaba Token Plan International"
-                                        Click="ConnectAlibaba_Click"
-                                        HorizontalAlignment="Stretch" />
-                                </Grid>
-                            </StackPanel>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <StackPanel Spacing="10">
-                    <TextBlock
-                        Text="CONNECTED ACCOUNTS"
-                        FontSize="11"
-                        FontWeight="SemiBold"
-                        CharacterSpacing="110"
-                        Foreground="{StaticResource QuotaDockMutedBrush}" />
-                    <StackPanel
-                        x:Name="ConnectionsPanel"
-                        AutomationProperties.AutomationId="ConnectionsPanel"
-                        Spacing="8" />
-                </StackPanel>
-
-                <StackPanel Spacing="10">
-                    <TextBlock
-                        Text="ALL METRICS"
-                        FontSize="11"
-                        FontWeight="SemiBold"
-                        CharacterSpacing="110"
-                        Foreground="{StaticResource QuotaDockMutedBrush}" />
-                    <TextBlock
-                        Text="Pin up to four metrics to the widget. API progress bars appear only after you set a local soft budget; they are not provider-enforced limits."
-                        FontSize="12"
-                        TextWrapping="Wrap"
-                        Foreground="{StaticResource QuotaDockMutedBrush}" />
-                    <StackPanel
-                        x:Name="MetricsPanel"
-                        AutomationProperties.AutomationId="AllMetricsPanel"
-                        Spacing="8" />
-                </StackPanel>
-
-                <StackPanel Spacing="10">
-                    <TextBlock
-                        Text="LOCAL SPEND"
-                        FontSize="11"
-                        FontWeight="SemiBold"
-                        CharacterSpacing="110"
-                        Foreground="{StaticResource QuotaDockMutedBrush}" />
-                    <TextBlock
-                        Text="On-device estimate from stored snapshots, grouped by each provider's own currency. Currencies are never mixed or converted."
-                        FontSize="12"
-                        TextWrapping="Wrap"
-                        Foreground="{StaticResource QuotaDockMutedBrush}" />
-                    <StackPanel
-                        x:Name="SpendPanel"
-                        AutomationProperties.AutomationId="SpendPanel"
-                        Spacing="8" />
-                </StackPanel>
-
-                <Border
-                    Padding="18"
-                    Background="{StaticResource QuotaDockSurfaceBrush}"
-                    BorderBrush="#2B3341"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock
-                                Text="Start with Windows"
-                                FontSize="14"
-                                FontWeight="SemiBold"
-                                Foreground="{StaticResource QuotaDockTextBrush}" />
-                            <TextBlock
-                                Text="Launch the portable app when you sign in."
-                                FontSize="11"
-                                Foreground="{StaticResource QuotaDockMutedBrush}" />
-                        </StackPanel>
-                        <ToggleSwitch
-                            x:Name="StartupToggle"
-                            Grid.Column="1"
-                            AutomationProperties.AutomationId="StartupToggle"
-                            AutomationProperties.Name="Start QuotaDock with Windows"
-                            Toggled="StartupToggle_Toggled" />
-                    </Grid>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+        <!-- Per-provider tabs are the primary navigation. Each connected provider
+             family gets its own tab; a persistent "Connect" tab hosts setup. -->
+        <muxc:TabView
+            x:Name="ProviderTabs"
+            Grid.Row="2"
+            Margin="16,0,16,12"
+            AutomationProperties.AutomationId="ProviderTabs"
+            IsAddTabButtonVisible="False"
+            CanReorderTabs="False"
+            CanDragTabs="False"
+            TabWidthMode="Equal" />
     </Grid>
 </Window>

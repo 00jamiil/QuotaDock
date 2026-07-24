@@ -36,6 +36,20 @@
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
             </Style>
+
+            <!-- Shared rounded-corner radii so the widget and flyout read as one
+                 soft, modern surface. -->
+            <CornerRadius x:Key="QuotaDockCardCorner">16</CornerRadius>
+            <CornerRadius x:Key="QuotaDockWindowCorner">18</CornerRadius>
+            <CornerRadius x:Key="QuotaDockPillCorner">999</CornerRadius>
+
+            <Style x:Key="QuotaDockCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource QuotaDockSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="#2B3341" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{StaticResource QuotaDockCardCorner}" />
+                <Setter Property="Padding" Value="16" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

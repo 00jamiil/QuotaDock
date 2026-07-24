@@ -210,7 +210,8 @@ $checksumLines = Get-ChildItem -LiteralPath $downloadsRoot -Recurse -File |
     Where-Object { $_.Extension -in @('.zip', '.msix') } |
     Sort-Object FullName |
     ForEach-Object {
-        $relative = [System.IO.Path]::GetRelativePath($downloadsRoot, $_.FullName).Replace('\', '/')
+        $resolvedRoot = ([System.IO.Path]::GetFullPath($downloadsRoot)).TrimEnd('\') + '\'
+        $relative = $_.FullName.Substring($resolvedRoot.Length).Replace('\', '/')
         $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
         "$hash  $relative"
     }

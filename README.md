@@ -11,7 +11,7 @@ This repository contains the `0.1.1-alpha` x64 implementation. It uses native Wi
 | OpenAI Codex | Official local Codex app-server output | Session and weekly quota, resets, credits, month tokens when reported |
 | OpenAI organization | Usage and Costs Admin APIs | Month-to-date input/output tokens, requests, spend, project breakdowns |
 | OpenAI-compatible provider | `/v1/models` plus optional same-origin aggregate endpoint | Model availability; optional month-to-date input/output tokens and requests |
-| Claude subscription | Default-browser Usage page with explicit clipboard import | Session and weekly quota with reset times |
+| Claude subscription | Automatic read of the local Claude Code sign-in (session usage window) | Session and weekly quota with reset times, plus month-to-date tokens/cost from the local metrics log |
 | Anthropic organization | Usage and Cost Admin APIs | Month-to-date tokens/spend with workspace and model breakdowns |
 | Alibaba Token Plan International | Isolated Model Studio console reader | Team-plan credit quota, used/remaining, reset, identity, model breakdowns |
 

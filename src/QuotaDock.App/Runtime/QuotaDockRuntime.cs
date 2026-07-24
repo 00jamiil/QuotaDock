@@ -12,6 +12,33 @@ namespace QuotaDock.App.Runtime;
 
 public sealed record RefreshOutcome(bool Started, string Message);
 
+public sealed record AutoDetectOutcome(int Added, int AlreadyPresent, IReadOnlyList<string> Notes)
+{
+    public string Summary
+    {
+        get
+        {
+            if (Added == 0 && AlreadyPresent == 0)
+            {
+                return "No local AI tools were detected. Connect a provider manually below.";
+            }
+
+            var parts = new List<string>();
+            if (Added > 0)
+            {
+                parts.Add($"connected {Added} new provider{(Added == 1 ? string.Empty : "s")}");
+            }
+
+            if (AlreadyPresent > 0)
+            {
+                parts.Add($"{AlreadyPresent} already connected");
+            }
+
+            return $"Auto-detect: {string.Join(", ", parts)}.";
+        }
+    }
+}
+
 public sealed class QuotaDockRuntime : IAsyncDisposable
 {
     private readonly SqliteSnapshotStore snapshotStore;
@@ -23,6 +50,7 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
     private readonly HttpClient openAiClient;
     private readonly HttpClient anthropicClient;
     private readonly HttpClient compatibleClient;
+    private readonly HttpClient claudeUsageClient;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> lastRefreshes = new(StringComparer.Ordinal);
@@ -68,13 +96,21 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
+        claudeUsageClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
 
         connectors =
         [
             new OpenAiOrganizationConnector(openAiClient, secretVault, TimeProvider.System),
             new OpenAiCompatibleConnector(compatibleClient, secretVault, TimeProvider.System),
             new AnthropicOrganizationConnector(anthropicClient, secretVault, TimeProvider.System),
-            new CodexPersonalConnector(new CodexAppServerClient(), TimeProvider.System)
+            new CodexPersonalConnector(new CodexAppServerClient(), TimeProvider.System),
+            new ClaudeSubscriptionConnector(
+                new ClaudeLocalCredentialsReader(),
+                new ClaudeUsageClient(claudeUsageClient),
+                TimeProvider.System)
         ];
         refreshCoordinator = new UsageRefreshCoordinator(connectors, snapshotStore);
     }
@@ -191,6 +227,74 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
                 cancellationToken)
             .ConfigureAwait(false);
         return new RefreshOutcome(true, LastError is null ? "Up to date" : "Some providers need attention");
+    }
+
+    /// <summary>
+    /// Scans for locally available first-party AI tools (Codex CLI and Claude
+    /// Code sign-in) and connects any that are present but not yet configured.
+    /// Detection is bounded and read-only: it probes for the Codex executable and
+    /// checks whether a local Claude Code credential exists. Nothing is added
+    /// twice, and providers that require a manual API key are never auto-added.
+    /// </summary>
+    public async Task<AutoDetectOutcome> AutoDetectAsync(CancellationToken cancellationToken = default)
+    {
+        var notes = new List<string>();
+        var added = 0;
+        var alreadyPresent = 0;
+
+        // Codex personal (local CLI).
+        var hasCodex = Connections.Any(c => c.Provider == ProviderKind.OpenAI && c.Source == DataSourceKind.LocalCli);
+        if (hasCodex)
+        {
+            alreadyPresent++;
+        }
+        else
+        {
+            var executable = await new CodexCliLocator().FindAsync(cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (executable is not null)
+            {
+                var result = await ConnectAsync(
+                    "codex-personal",
+                    "Codex account",
+                    null,
+                    new Dictionary<string, string>(StringComparer.Ordinal) { ["executable"] = executable },
+                    cancellationToken).ConfigureAwait(false);
+                if (result.IsValid)
+                {
+                    added++;
+                    notes.Add("Codex CLI detected and connected.");
+                }
+            }
+        }
+
+        // Claude subscription (local Claude Code credential).
+        var hasClaudeLocal = Connections.Any(c =>
+            c.Provider == ProviderKind.Anthropic && c.Source == DataSourceKind.LocalCli);
+        if (hasClaudeLocal)
+        {
+            alreadyPresent++;
+        }
+        else if (new ClaudeLocalCredentialsReader().Read() is not null)
+        {
+            var result = await ConnectAsync(
+                "claude-subscription",
+                "Claude account",
+                null,
+                null,
+                cancellationToken).ConfigureAwait(false);
+            if (result.IsValid)
+            {
+                added++;
+                notes.Add("Claude Code sign-in detected and connected.");
+            }
+            else
+            {
+                notes.Add(result.Message ?? "Claude Code sign-in found but usage could not be read yet.");
+            }
+        }
+
+        return new AutoDetectOutcome(added, alreadyPresent, notes);
     }
 
     public async Task<ConnectionValidationResult> ConnectAsync(
@@ -366,6 +470,7 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
         openAiClient.Dispose();
         anthropicClient.Dispose();
         compatibleClient.Dispose();
+        claudeUsageClient.Dispose();
         await snapshotStore.DisposeAsync().ConfigureAwait(false);
         await connectionStore.DisposeAsync().ConfigureAwait(false);
         await settingsStore.DisposeAsync().ConfigureAwait(false);

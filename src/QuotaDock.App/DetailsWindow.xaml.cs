@@ -11,14 +11,13 @@ using QuotaDock.Core.Domain;
 using QuotaDock.Core.Presentation;
 using WinRT.Interop;
 using Windows.Graphics;
-using Windows.ApplicationModel.DataTransfer;
 
 namespace QuotaDock.App;
 
 public sealed partial class DetailsWindow : Window
 {
     private const string CodexInstallUrl = "https://developers.openai.com/codex/cli/";
-    private const string ClaudeUsageUrl = "https://claude.ai/settings/usage";
+    private const string ClaudeInstallUrl = "https://docs.claude.com/en/docs/claude-code/setup";
     private readonly QuotaDockRuntime runtime;
     private readonly CodexCliLocator codexCliLocator = new();
     private bool rebuilding;
@@ -29,7 +28,7 @@ public sealed partial class DetailsWindow : Window
         InitializeComponent();
         var handle = WindowNative.GetWindowHandle(this);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
-        AppWindow.GetFromWindowId(id).Resize(new SizeInt32(760, 760));
+        AppWindow.GetFromWindowId(id).Resize(new SizeInt32(780, 780));
         runtime.StateChanged += Runtime_StateChanged;
         Closed += (_, _) => runtime.StateChanged -= Runtime_StateChanged;
         DetailsRoot.Loaded += DetailsRoot_Loaded;
@@ -41,52 +40,30 @@ public sealed partial class DetailsWindow : Window
         Rebuild();
     }
 
-    private void OptionalProviders_Toggled(object sender, RoutedEventArgs e)
-    {
-        OptionalProvidersContent.Visibility = OptionalProvidersToggle.IsChecked == true
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-    }
-
     private void Runtime_StateChanged(object? sender, EventArgs e) =>
         DispatcherQueue.TryEnqueue(Rebuild);
+
+    // ---- Tab construction -------------------------------------------------
 
     private void Rebuild()
     {
         rebuilding = true;
         try
         {
-            StartupToggle.IsOn = runtime.Settings.StartWithWindows;
-            ConnectionsPanel.Children.Clear();
-            if (runtime.Connections.Count == 0)
+            var selectedTag = (ProviderTabs.SelectedItem as TabViewItem)?.Tag as string;
+            ProviderTabs.TabItems.Clear();
+
+            foreach (var provider in ConnectedProviders())
             {
-                ConnectionsPanel.Children.Add(MutedText("No providers connected yet."));
-            }
-            else
-            {
-                foreach (var connection in runtime.Connections)
-                {
-                    ConnectionsPanel.Children.Add(CreateConnectionCard(connection));
-                }
+                ProviderTabs.TabItems.Add(BuildProviderTab(provider));
             }
 
-            MetricsPanel.Children.Clear();
-            var metricCount = 0;
-            foreach (var snapshot in runtime.Snapshots.OrderBy(item => item.Provider).ThenBy(item => item.AccountLabel))
-            {
-                foreach (var metric in snapshot.Metrics)
-                {
-                    MetricsPanel.Children.Add(CreateMetricCard(snapshot, metric));
-                    metricCount++;
-                }
-            }
+            ProviderTabs.TabItems.Add(BuildConnectTab());
 
-            if (metricCount == 0)
-            {
-                MetricsPanel.Children.Add(MutedText("Metrics appear here after a successful connection refresh."));
-            }
-
-            RebuildSpend();
+            var restore = ProviderTabs.TabItems
+                .OfType<TabViewItem>()
+                .FirstOrDefault(item => (item.Tag as string) == selectedTag);
+            ProviderTabs.SelectedItem = restore ?? ProviderTabs.TabItems.FirstOrDefault();
         }
         finally
         {
@@ -94,20 +71,211 @@ public sealed partial class DetailsWindow : Window
         }
     }
 
-    private void RebuildSpend()
+    private IReadOnlyList<ProviderKind> ConnectedProviders()
     {
-        SpendPanel.Children.Clear();
-        var summary = SpendEstimator.Summarize(runtime.Snapshots, DateTimeOffset.Now);
-        if (!summary.HasData)
+        return runtime.Connections
+            .Select(connection => connection.Provider)
+            .Distinct()
+            .OrderBy(provider => provider)
+            .ToArray();
+    }
+
+    private TabViewItem BuildProviderTab(ProviderKind provider)
+    {
+        var content = new StackPanel { Spacing = 14, Padding = new Thickness(6, 14, 6, 20) };
+
+        var connections = runtime.Connections.Where(c => c.Provider == provider).ToArray();
+        var snapshots = runtime.Snapshots.Where(s => s.Provider == provider).ToArray();
+
+        // Accounts section.
+        content.Children.Add(SectionLabel("ACCOUNTS"));
+        foreach (var connection in connections)
         {
-            SpendPanel.Children.Add(MutedText(
-                "No local cost history yet. Only providers that report spend contribute here."));
-            return;
+            content.Children.Add(CreateConnectionCard(connection));
         }
 
-        SpendPanel.Children.Add(SpendCard("Last 7 days", summary.LastSevenDays));
-        SpendPanel.Children.Add(SpendCard("Last 30 days", summary.LastThirtyDays));
+        // Metrics section.
+        content.Children.Add(SectionLabel("METRICS"));
+        var metricCount = 0;
+        foreach (var snapshot in snapshots.OrderBy(s => s.AccountLabel))
+        {
+            foreach (var metric in snapshot.Metrics)
+            {
+                content.Children.Add(CreateMetricCard(snapshot, metric));
+                metricCount++;
+            }
+        }
+
+        if (metricCount == 0)
+        {
+            content.Children.Add(MutedText("Metrics appear here after a successful refresh."));
+        }
+
+        // Local spend (per provider currency).
+        var spend = SpendEstimator.Summarize(snapshots, DateTimeOffset.Now);
+        if (spend.HasData)
+        {
+            content.Children.Add(SectionLabel("LOCAL SPEND"));
+            content.Children.Add(SpendCard("Last 7 days", spend.LastSevenDays));
+            content.Children.Add(SpendCard("Last 30 days", spend.LastThirtyDays));
+        }
+
+        return new TabViewItem
+        {
+            Header = ProviderDisplayName(provider),
+            Tag = $"provider:{provider}",
+            IsClosable = false,
+            IconSource = new FontIconSource { Glyph = ProviderGlyph(provider) },
+            Content = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            }
+        };
     }
+
+    private TabViewItem BuildConnectTab()
+    {
+        var content = new StackPanel { Spacing = 14, Padding = new Thickness(6, 14, 6, 20) };
+
+        content.Children.Add(SectionLabel("AUTO-DETECT"));
+        var autoCard = new StackPanel { Spacing = 10 };
+        autoCard.Children.Add(new TextBlock
+        {
+            Text = "Scan this PC for signed-in AI tools and connect them automatically. QuotaDock reads Codex and Claude Code usage locally — no keys, no copy/paste.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 12,
+            Foreground = Brush("QuotaDockMutedBrush")
+        });
+        var autoButton = new Button
+        {
+            Content = "Auto-detect providers & models",
+            Background = Brush("QuotaDockAccentBrush"),
+            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 34, 29)),
+            Padding = new Thickness(14, 10, 14, 10),
+            CornerRadius = new CornerRadius(999)
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(autoButton, "ConnectTabAutoDetectButton");
+        autoButton.Click += AutoDetect_Click;
+        autoCard.Children.Add(autoButton);
+        content.Children.Add(Card(autoCard));
+
+        content.Children.Add(SectionLabel("LOCAL SUBSCRIPTIONS"));
+        content.Children.Add(ConnectActionCard(
+            "Connect local Codex",
+            "Reads your installed Codex CLI usage automatically.",
+            "Connect", ConnectCodex_Click));
+        content.Children.Add(ConnectActionCard(
+            "Connect Claude subscription",
+            "Reads Claude Code session & weekly limits automatically from your local sign-in.",
+            "Connect", ConnectClaude_Click));
+
+        content.Children.Add(SectionLabel("OPENAI-COMPATIBLE"));
+        content.Children.Add(ConnectActionCard(
+            "Add OpenAI-compatible provider",
+            "OpenRouter, DeepSeek, Groq, Mistral, xAI, Together, Ollama and more — or any custom endpoint.",
+            "Add", ConnectCompatible_Click));
+
+        content.Children.Add(SectionLabel("ORGANIZATION APIs"));
+        content.Children.Add(ConnectActionCard(
+            "OpenAI organization API",
+            "Admin key · month-to-date tokens, requests and cost.",
+            "Connect", ConnectOpenAi_Click));
+        content.Children.Add(ConnectActionCard(
+            "Anthropic organization API",
+            "Admin key · message usage and cost reports.",
+            "Connect", ConnectAnthropic_Click));
+        content.Children.Add(ConnectActionCard(
+            "Alibaba Token Plan International",
+            "Isolated console reader · team plan credits and resets.",
+            "Connect", ConnectAlibaba_Click));
+
+        content.Children.Add(BuildStartupCard());
+
+        return new TabViewItem
+        {
+            Header = "Connect",
+            Tag = "connect",
+            IsClosable = false,
+            IconSource = new FontIconSource { Glyph = "\uE710" },
+            Content = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            }
+        };
+    }
+
+    private Border BuildStartupCard()
+    {
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Start with Windows",
+            FontSize = 14,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = Brush("QuotaDockTextBrush")
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Launch the portable app when you sign in.",
+            FontSize = 11,
+            Foreground = Brush("QuotaDockMutedBrush")
+        });
+
+        var toggle = new ToggleSwitch { IsOn = runtime.Settings.StartWithWindows };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, "StartupToggle");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, "Start QuotaDock with Windows");
+        toggle.Toggled += StartupToggle_Toggled;
+
+        var grid = new Grid { Margin = new Thickness(0, 8, 0, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(stack);
+        Grid.SetColumn(toggle, 1);
+        grid.Children.Add(toggle);
+        return Card(grid);
+    }
+
+    private Border ConnectActionCard(string title, string subtitle, string actionText, RoutedEventHandler handler)
+    {
+        var text = new StackPanel();
+        text.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 14,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = Brush("QuotaDockTextBrush")
+        });
+        text.Children.Add(new TextBlock
+        {
+            Text = subtitle,
+            Margin = new Thickness(0, 3, 0, 0),
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = Brush("QuotaDockMutedBrush")
+        });
+
+        var button = new Button
+        {
+            Content = actionText,
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(16, 7, 16, 7),
+            CornerRadius = new CornerRadius(999)
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, title);
+        button.Click += handler;
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(text);
+        Grid.SetColumn(button, 1);
+        grid.Children.Add(button);
+        return Card(grid);
+    }
+
+    // ---- Cards ------------------------------------------------------------
 
     private UIElement SpendCard(string title, IReadOnlyList<SpendTotal> totals)
     {
@@ -139,16 +307,15 @@ public sealed partial class DetailsWindow : Window
         return Card(content);
     }
 
-    private UIElement CreateConnectionCard(ConnectorConnection connection)
+    private Border CreateConnectionCard(ConnectorConnection connection)
     {
         var latest = runtime.Snapshots.FirstOrDefault(snapshot => snapshot.ConnectionId == connection.Id);
         var health = latest?.StatusMessage ?? latest?.Health.ToString() ?? "Waiting for first refresh";
         var source = connection.Source switch
         {
             DataSourceKind.OfficialApi => "Official API",
+            DataSourceKind.LocalCli when connection.Provider == ProviderKind.Anthropic => "Local Claude sign-in",
             DataSourceKind.LocalCli => "Local CLI",
-            DataSourceKind.DashboardReader when connection.Provider == ProviderKind.Anthropic =>
-                "Default-browser import",
             DataSourceKind.DashboardReader => "Isolated dashboard reader",
             _ => connection.Source.ToString()
         };
@@ -158,18 +325,18 @@ public sealed partial class DetailsWindow : Window
             Content = "Disconnect",
             Tag = connection.Id,
             VerticalAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(10, 5, 10, 5)
+            Padding = new Thickness(12, 5, 12, 5),
+            CornerRadius = new CornerRadius(999)
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            disconnect,
-            $"Disconnect {connection.AccountLabel}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(disconnect, $"Disconnect {connection.AccountLabel}");
         disconnect.Click += Disconnect_Click;
 
         var text = new StackPanel();
         text.Children.Add(new TextBlock
         {
-            Text = $"{connection.Provider} · {connection.AccountLabel}",
+            Text = connection.AccountLabel,
             FontSize = 14,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = Brush("QuotaDockTextBrush")
         });
         text.Children.Add(new TextBlock
@@ -204,13 +371,14 @@ public sealed partial class DetailsWindow : Window
         return Card(grid);
     }
 
-    private UIElement CreateMetricCard(UsageSnapshot snapshot, UsageMetric metric)
+    private Border CreateMetricCard(UsageSnapshot snapshot, UsageMetric metric)
     {
         var key = $"{snapshot.ConnectionId}:{metric.Id}";
         var title = new TextBlock
         {
-            Text = $"{snapshot.Provider} · {metric.Label}",
+            Text = metric.Label,
             FontSize = 14,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = Brush("QuotaDockTextBrush")
         };
         var direction = metric.Direction == MetricDirection.Used ? "used" : "remaining";
@@ -226,7 +394,7 @@ public sealed partial class DetailsWindow : Window
         };
         var pin = new CheckBox
         {
-            Content = "Pin to widget",
+            Content = "Pin",
             Tag = key,
             IsChecked = runtime.Settings.PinnedMetricIds.Contains(key, StringComparer.Ordinal),
             VerticalAlignment = VerticalAlignment.Center
@@ -240,6 +408,22 @@ public sealed partial class DetailsWindow : Window
         var labelStack = new StackPanel();
         labelStack.Children.Add(title);
         labelStack.Children.Add(value);
+
+        // Quota metrics with a real limit get a rounded progress bar.
+        if (metric.ProgressFraction is { } fraction)
+        {
+            labelStack.Children.Add(new ProgressBar
+            {
+                Margin = new Thickness(0, 8, 0, 0),
+                Height = 6,
+                CornerRadius = new CornerRadius(999),
+                Minimum = 0,
+                Maximum = 100,
+                Value = (double)(fraction * 100m),
+                Foreground = Brush("QuotaDockAccentBrush"),
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 48, 56, 72))
+            });
+        }
 
         var pace = UsagePace.Calculate(metric, snapshot.CapturedAt, DateTimeOffset.Now);
         if (pace.Status != PaceStatus.Unknown)
@@ -269,7 +453,8 @@ public sealed partial class DetailsWindow : Window
             {
                 Content = "Save soft budget",
                 Tag = budgetBox,
-                Padding = new Thickness(10, 5, 10, 5)
+                Padding = new Thickness(12, 5, 12, 5),
+                CornerRadius = new CornerRadius(999)
             };
             saveBudget.Click += SaveBudget_Click;
             var budgetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -300,6 +485,25 @@ public sealed partial class DetailsWindow : Window
         return Card(content);
     }
 
+    // ---- Connect actions --------------------------------------------------
+
+    private async void AutoDetect_Click(object sender, RoutedEventArgs e)
+    {
+        SetStatus("Scanning for local AI tools…", InfoBarSeverity.Informational);
+        try
+        {
+            var outcome = await runtime.AutoDetectAsync();
+            var detail = outcome.Notes.Count > 0 ? " " + string.Join(" ", outcome.Notes) : string.Empty;
+            SetStatus(
+                outcome.Summary + detail,
+                outcome.Added > 0 ? InfoBarSeverity.Success : InfoBarSeverity.Informational);
+        }
+        catch
+        {
+            SetStatus("Auto-detect could not complete. Try connecting a provider manually.", InfoBarSeverity.Error);
+        }
+    }
+
     private async void ConnectCodex_Click(object sender, RoutedEventArgs e)
     {
         SetStatus("Checking the installed Codex CLI…", InfoBarSeverity.Informational);
@@ -328,13 +532,6 @@ public sealed partial class DetailsWindow : Window
             TextWrapping = TextWrapping.Wrap
         });
         fields.Children.Add(executablePath);
-        fields.Children.Add(new TextBlock
-        {
-            Text = "Codex owns its browser sign-in and credentials. QuotaDock reads only its supported local usage output.",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Foreground = Brush("QuotaDockMutedBrush")
-        });
 
         var dialog = new ContentDialog
         {
@@ -377,12 +574,38 @@ public sealed partial class DetailsWindow : Window
             "codex-personal",
             "Codex account",
             null,
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["executable"] = executable
-            });
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["executable"] = executable });
         SetStatus(result.IsValid ? "Codex connected." : result.Message!,
             result.IsValid ? InfoBarSeverity.Success : InfoBarSeverity.Error);
+    }
+
+    private async void ConnectClaude_Click(object sender, RoutedEventArgs e)
+    {
+        SetStatus("Reading your local Claude sign-in…", InfoBarSeverity.Informational);
+        var result = await runtime.ConnectAsync("claude-subscription", "Claude account", null, null);
+        if (result.IsValid)
+        {
+            SetStatus("Claude connected. Session & weekly limits will update automatically.", InfoBarSeverity.Success);
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Connect Claude subscription",
+            Content = new TextBlock
+            {
+                Text = result.Message + "\n\nClaude Code stores a local sign-in that QuotaDock reads to show your session and weekly limits automatically. Install Claude Code and run it once, then try again.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Open Claude Code setup",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = DetailsRoot.XamlRoot
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            OpenDefaultBrowser(ClaudeInstallUrl);
+        }
     }
 
     private async void ConnectOpenAi_Click(object sender, RoutedEventArgs e) =>
@@ -391,92 +614,42 @@ public sealed partial class DetailsWindow : Window
     private async void ConnectAnthropic_Click(object sender, RoutedEventArgs e) =>
         await ConnectAdminApiAsync("anthropic-organization", "Anthropic organization", "Anthropic Admin API key");
 
-    private async void ConnectClaude_Click(object sender, RoutedEventArgs e)
-    {
-        await runtime.EnsureDashboardConnectionAsync(ProviderKind.Anthropic);
-        if (OpenDefaultBrowser(ClaudeUsageUrl))
-        {
-            SetStatus(
-                "Claude opened in your default browser. Sign in, open Usage, copy the visible page text, then click ‘Import copied Claude usage’.",
-                InfoBarSeverity.Informational);
-        }
-        else
-        {
-            SetStatus("Windows could not open the Claude Usage page.", InfoBarSeverity.Error);
-        }
-    }
-
-    private async void ImportClaude_Click(object sender, RoutedEventArgs e)
-    {
-        string visibleText = string.Empty;
-        try
-        {
-            var content = Clipboard.GetContent();
-            if (!content.Contains(StandardDataFormats.Text))
-            {
-                SetStatus("Copy the visible text from Claude’s Usage page first.", InfoBarSeverity.Warning);
-                return;
-            }
-
-            visibleText = await content.GetTextAsync();
-            if (string.IsNullOrWhiteSpace(visibleText) || visibleText.Length > 2_000_000)
-            {
-                SetStatus("The copied text was empty or unexpectedly large and was not processed.",
-                    InfoBarSeverity.Error);
-                return;
-            }
-
-            var result = await runtime.ImportClaudeUsageAsync(visibleText);
-            SetStatus(
-                result.IsSuccess
-                    ? "Claude usage imported. Copied source text was not saved."
-                    : result.Message ?? "Claude usage values were not found in the copied text.",
-                result.IsSuccess ? InfoBarSeverity.Success : InfoBarSeverity.Error);
-        }
-        catch
-        {
-            SetStatus("The copied Claude usage text could not be read. Saved values were kept.",
-                InfoBarSeverity.Error);
-        }
-        finally
-        {
-            visibleText = string.Empty;
-        }
-    }
+    private void ConnectAlibaba_Click(object sender, RoutedEventArgs e) =>
+        ((App)Application.Current).OpenDashboardReader(ProviderKind.Alibaba);
 
     private async void ConnectCompatible_Click(object sender, RoutedEventArgs e)
     {
-        var account = new TextBox
+        var presetBox = new ComboBox
         {
-            Header = "Provider label",
-            Text = "Custom provider",
-            MaxLength = 80
+            Header = "Preset",
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
-        var baseUrl = new TextBox
+        presetBox.Items.Add(new ComboBoxItem { Content = "Custom endpoint", Tag = string.Empty });
+        foreach (var preset in OpenAiCompatiblePresets.All)
         {
-            Header = "OpenAI-compatible base URL",
-            PlaceholderText = "https://provider.example/v1",
-            MaxLength = 2048
-        };
-        var model = new TextBox
+            presetBox.Items.Add(new ComboBoxItem { Content = preset.DisplayName, Tag = preset.Id });
+        }
+        presetBox.SelectedIndex = 0;
+
+        var account = new TextBox { Header = "Provider label", Text = "Custom provider", MaxLength = 80 };
+        var baseUrl = new TextBox { Header = "OpenAI-compatible base URL", PlaceholderText = "https://provider.example/v1", MaxLength = 2048 };
+        var model = new TextBox { Header = "Model ID", PlaceholderText = "provider-model-id", MaxLength = 256 };
+        var key = new PasswordBox { Header = "API key (optional for local providers)", PasswordChar = "●", MaxLength = 4096 };
+        var usageUrl = new TextBox { Header = "Aggregate usage URL (optional, same origin)", PlaceholderText = "https://provider.example/admin/usage", MaxLength = 2048 };
+
+        presetBox.SelectionChanged += (_, _) =>
         {
-            Header = "Model ID",
-            PlaceholderText = "provider-model-id",
-            MaxLength = 256
+            if (presetBox.SelectedItem is ComboBoxItem { Tag: string id } && !string.IsNullOrEmpty(id) &&
+                OpenAiCompatiblePresets.FindById(id) is { } preset)
+            {
+                account.Text = preset.DisplayName;
+                baseUrl.Text = preset.BaseUrl;
+                model.Text = preset.DefaultModel;
+            }
         };
-        var key = new PasswordBox
-        {
-            Header = "API key (optional for local providers)",
-            PasswordChar = "●",
-            MaxLength = 4096
-        };
-        var usageUrl = new TextBox
-        {
-            Header = "Aggregate usage URL (optional, same origin)",
-            PlaceholderText = "https://provider.example/admin/usage",
-            MaxLength = 2048
-        };
+
         var fields = new StackPanel { Spacing = 10 };
+        fields.Children.Add(presetBox);
         fields.Children.Add(account);
         fields.Children.Add(baseUrl);
         fields.Children.Add(model);
@@ -484,7 +657,7 @@ public sealed partial class DetailsWindow : Window
         fields.Children.Add(usageUrl);
         fields.Children.Add(new TextBlock
         {
-            Text = "Model access is validated through /v1/models. Aggregate usage is not standardized; without a compatible usage URL, QuotaDock monitors availability only and never invents usage values. HTTPS is required except for localhost.",
+            Text = "Model access is validated through /v1/models. Without a compatible usage URL, QuotaDock monitors availability only and never invents usage values. HTTPS is required except for localhost.",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 11,
             Foreground = Brush("QuotaDockMutedBrush")
@@ -493,7 +666,7 @@ public sealed partial class DetailsWindow : Window
         var dialog = new ContentDialog
         {
             Title = "Add OpenAI-compatible provider",
-            Content = new ScrollViewer { Content = fields, MaxHeight = 500 },
+            Content = new ScrollViewer { Content = fields, MaxHeight = 520 },
             PrimaryButtonText = "Validate and connect",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -535,23 +708,10 @@ public sealed partial class DetailsWindow : Window
             result.IsValid ? InfoBarSeverity.Success : InfoBarSeverity.Error);
     }
 
-    private void ConnectAlibaba_Click(object sender, RoutedEventArgs e) =>
-        ((App)Application.Current).OpenDashboardReader(ProviderKind.Alibaba);
-
     private async Task ConnectAdminApiAsync(string connectorId, string defaultLabel, string keyLabel)
     {
-        var account = new TextBox
-        {
-            Header = "Account label",
-            Text = defaultLabel,
-            MaxLength = 80
-        };
-        var key = new PasswordBox
-        {
-            Header = keyLabel,
-            PasswordChar = "●",
-            MaxLength = 256
-        };
+        var account = new TextBox { Header = "Account label", Text = defaultLabel, MaxLength = 80 };
+        var key = new PasswordBox { Header = keyLabel, PasswordChar = "●", MaxLength = 256 };
         var fields = new StackPanel { Spacing = 12 };
         fields.Children.Add(account);
         fields.Children.Add(key);
@@ -665,21 +825,21 @@ public sealed partial class DetailsWindow : Window
 
     private async void StartupToggle_Toggled(object sender, RoutedEventArgs e)
     {
-        if (rebuilding)
+        if (rebuilding || sender is not ToggleSwitch toggle)
         {
             return;
         }
 
         try
         {
-            StartupManager.SetEnabled(StartupToggle.IsOn);
-            await runtime.SaveSettingsAsync(runtime.Settings with { StartWithWindows = StartupToggle.IsOn });
+            StartupManager.SetEnabled(toggle.IsOn);
+            await runtime.SaveSettingsAsync(runtime.Settings with { StartWithWindows = toggle.IsOn });
             SetStatus("Startup preference saved.", InfoBarSeverity.Success);
         }
         catch
         {
             rebuilding = true;
-            StartupToggle.IsOn = !StartupToggle.IsOn;
+            toggle.IsOn = !toggle.IsOn;
             rebuilding = false;
             SetStatus("Windows startup could not be changed.", InfoBarSeverity.Error);
         }
@@ -711,13 +871,24 @@ public sealed partial class DetailsWindow : Window
         }
     }
 
+    // ---- Shared helpers ---------------------------------------------------
+
+    private static TextBlock SectionLabel(string text) => new()
+    {
+        Text = text,
+        FontSize = 11,
+        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        CharacterSpacing = 110,
+        Foreground = Brush("QuotaDockMutedBrush")
+    };
+
     private static Border Card(UIElement content) => new()
     {
-        Padding = new Thickness(14, 12, 14, 12),
+        Padding = new Thickness(16),
         Background = Brush("QuotaDockSurfaceBrush"),
         BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 43, 51, 65)),
         BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(10),
+        CornerRadius = new CornerRadius(16),
         Child = content
     };
 
@@ -729,6 +900,22 @@ public sealed partial class DetailsWindow : Window
     };
 
     private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
+
+    private static string ProviderDisplayName(ProviderKind provider) => provider switch
+    {
+        ProviderKind.OpenAI => "OpenAI",
+        ProviderKind.Anthropic => "Anthropic",
+        ProviderKind.Alibaba => "Alibaba",
+        _ => provider.ToString()
+    };
+
+    private static string ProviderGlyph(ProviderKind provider) => provider switch
+    {
+        ProviderKind.OpenAI => "\uE9D9",
+        ProviderKind.Anthropic => "\uE8BD",
+        ProviderKind.Alibaba => "\uE909",
+        _ => "\uE7C3"
+    };
 
     private static (string Label, string Brush) IncidentBadge(ConnectionHealth health) => health switch
     {
@@ -758,9 +945,9 @@ public sealed partial class DetailsWindow : Window
         return new Border
         {
             Margin = new Thickness(0, 5, 0, 0),
-            Padding = new Thickness(8, 2, 8, 2),
+            Padding = new Thickness(10, 3, 10, 3),
             HorizontalAlignment = HorizontalAlignment.Left,
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = new CornerRadius(999),
             BorderBrush = Brush(brush),
             BorderThickness = new Thickness(1),
             Child = new TextBlock
