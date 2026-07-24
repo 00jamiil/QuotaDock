@@ -2,6 +2,14 @@
 
 All notable changes to QuotaDock are recorded here.
 
+## 0.3.0-alpha — 2026-07-24
+
+- Narrow QuotaDock to the four local AI coding agents that expose sign-in-based usage: Codex, Claude, Grok, and Kimi. Organization admin APIs, OpenAI-compatible endpoints, and the Alibaba dashboard reader are removed.
+- Add Grok and Kimi subscription connectors that read each CLI's local sign-in and query its usage window, mirroring the Claude connector. Both fail closed (never fabricating usage) while their usage endpoints are verified.
+- Redesign the widget around provider tabs: a Home tab plus one tab per provider. Home shows your pinned metrics (or everything before you pin anything), and every metric card has a pin toggle.
+- Make the widget window resizable with an adaptive metric grid that reflows from one to many columns as you widen it, with a sensible minimum size.
+- Remove the four-pinned-metric limit.
+
 ## 0.2.0-alpha — 2026-07-24
 
 - Read Claude subscription usage automatically from the local Claude Code sign-in — no more copy/paste. Session and weekly (all-models and Opus) quota, remaining percentages, and reset times update on the normal refresh schedule.

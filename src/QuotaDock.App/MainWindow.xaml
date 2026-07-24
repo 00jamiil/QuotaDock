@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     Title="QuotaDock"
     mc:Ignorable="d">
 
@@ -15,10 +16,12 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="52" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="42" />
         </Grid.RowDefinitions>
 
+        <!-- Header -->
         <Grid Grid.Row="0" Padding="14,10,10,6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -80,14 +83,29 @@
             </Button>
         </Grid>
 
-        <Border
+        <!-- Provider tabs -->
+        <ScrollViewer
             Grid.Row="1"
+            Margin="10,0,10,4"
+            HorizontalScrollBarVisibility="Hidden"
+            VerticalScrollBarVisibility="Disabled">
+            <StackPanel
+                x:Name="TabStrip"
+                AutomationProperties.AutomationId="TabStrip"
+                AutomationProperties.Name="Provider tabs"
+                Orientation="Horizontal"
+                Spacing="4" />
+        </ScrollViewer>
+
+        <!-- Status -->
+        <Border
+            Grid.Row="2"
             Margin="14,2,14,10"
             Padding="13,10"
             Background="{StaticResource QuotaDockSurfaceBrush}"
-            BorderBrush="#2B3341"
+            BorderBrush="#303949"
             BorderThickness="1"
-            CornerRadius="10">
+            CornerRadius="6">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -106,34 +124,34 @@
             </Grid>
         </Border>
 
-        <ListView
-            x:Name="MetricList"
-            Grid.Row="2"
+        <!-- Adaptive metric grid -->
+        <ScrollViewer
+            Grid.Row="3"
             Margin="8,0"
             Padding="6,0"
-            AutomationProperties.AutomationId="MetricList"
-            AutomationProperties.Name="Pinned usage metrics"
-            IsItemClickEnabled="False"
-            IsTabStop="False"
-            SelectionMode="None">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                    <Setter Property="Padding" Value="0" />
-                    <Setter Property="Margin" Value="0,0,0,8" />
-                    <Setter Property="CornerRadius" Value="12" />
-                    <Setter Property="IsTabStop" Value="False" />
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.ItemTemplate>
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <muxc:ItemsRepeater
+                x:Name="MetricRepeater"
+                AutomationProperties.AutomationId="MetricList"
+                AutomationProperties.Name="Usage metrics">
+                <muxc:ItemsRepeater.Layout>
+                    <muxc:UniformGridLayout
+                        MinItemWidth="280"
+                        MinItemHeight="150"
+                        MinRowSpacing="8"
+                        MinColumnSpacing="8"
+                        ItemsStretch="Fill" />
+                </muxc:ItemsRepeater.Layout>
+                <muxc:ItemsRepeater.ItemTemplate>
                 <DataTemplate>
                     <Border
                         Padding="14,12"
                         AutomationProperties.Name="{Binding AutomationName}"
                         Background="{StaticResource QuotaDockSurfaceBrush}"
-                        BorderBrush="#2B3341"
+                        BorderBrush="#303949"
                         BorderThickness="1"
-                        CornerRadius="12">
+                        CornerRadius="6">
                         <Grid RowSpacing="7">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -145,6 +163,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
@@ -164,11 +183,29 @@
                                 </StackPanel>
                                 <TextBlock
                                     Grid.Column="1"
+                                    Margin="0,0,6,0"
                                     Text="{Binding Value}"
                                     FontSize="18"
                                     FontWeight="SemiBold"
                                     Foreground="{StaticResource QuotaDockTextBrush}"
                                     VerticalAlignment="Bottom" />
+                                <Button
+                                    Grid.Column="2"
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Tag="{Binding Key}"
+                                    Click="PinToggle_Click"
+                                    AutomationProperties.Name="Pin or unpin this metric to Home"
+                                    ToolTipService.ToolTip="Pin to Home"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="6"
+                                    VerticalAlignment="Top"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center">
+                                    <FontIcon FontSize="13" Glyph="&#xE840;" Foreground="{Binding PinBrush}" />
+                                </Button>
                             </Grid>
                             <ProgressBar
                                 Grid.Row="1"
@@ -200,39 +237,50 @@
                                     FontSize="10"
                                     Foreground="{StaticResource QuotaDockMutedBrush}" />
                             </Grid>
+                            <TextBlock
+                                Grid.Row="4"
+                                Text="{Binding PaceText}"
+                                Visibility="{Binding PaceVisibility}"
+                                FontSize="10"
+                                FontWeight="SemiBold"
+                                Foreground="{Binding PaceBrush}" />
                         </Grid>
                     </Border>
                 </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+                </muxc:ItemsRepeater.ItemTemplate>
+            </muxc:ItemsRepeater>
+        </ScrollViewer>
 
-        <Grid Grid.Row="2" x:Name="EmptyState" Margin="28,8,28,20">
+        <Grid Grid.Row="3" x:Name="EmptyState" Margin="28,8,28,20">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                <FontIcon Glyph="&#xE945;" FontSize="24" Foreground="{StaticResource QuotaDockMutedBrush}" />
+                <FontIcon x:Name="EmptyIcon" Glyph="&#xE945;" FontSize="24" Foreground="{StaticResource QuotaDockMutedBrush}" />
                 <TextBlock
+                    x:Name="EmptyTitle"
                     Text="Your AI limits, one glance away."
                     FontSize="15"
                     FontWeight="SemiBold"
                     Foreground="{StaticResource QuotaDockTextBrush}"
                     TextAlignment="Center" />
                 <TextBlock
-                    Text="Open settings to connect Codex, Claude, OpenAI API, Anthropic API, or Alibaba Token Plan."
+                    x:Name="EmptySubtitle"
+                    Text="Connect Codex, Claude, Grok, or Kimi to start tracking usage."
                     FontSize="12"
                     Foreground="{StaticResource QuotaDockMutedBrush}"
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
                 <Button
+                    x:Name="EmptyActionButton"
                     AutomationProperties.AutomationId="EmptyStateConnectButton"
                     AutomationProperties.Name="Connect a provider"
                     Content="Connect provider"
                     Click="SettingsButton_Click"
                     HorizontalAlignment="Center"
                     Margin="0,5,0,0"
-                    CornerRadius="8" />
+                    CornerRadius="4" />
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="3" Padding="15,4,8,7">
+        <Grid Grid.Row="4" Padding="15,4,8,7">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -261,7 +309,7 @@
                 Margin="8,0,0,0"
                 Padding="8,2"
                 FontSize="11"
-                CornerRadius="6" />
+                CornerRadius="4" />
         </Grid>
     </Grid>
 </Window>

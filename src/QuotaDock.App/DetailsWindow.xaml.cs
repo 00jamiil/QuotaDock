@@ -17,7 +17,6 @@ namespace QuotaDock.App;
 public sealed partial class DetailsWindow : Window
 {
     private const string CodexInstallUrl = "https://developers.openai.com/codex/cli/";
-    private const string ClaudeInstallUrl = "https://docs.claude.com/en/docs/claude-code/setup";
     private readonly QuotaDockRuntime runtime;
     private readonly CodexCliLocator codexCliLocator = new();
     private bool rebuilding;
@@ -26,6 +25,9 @@ public sealed partial class DetailsWindow : Window
     {
         this.runtime = runtime;
         InitializeComponent();
+        WindowStyleHelper.Apply(this);
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleBarDragRegion);
         var handle = WindowNative.GetWindowHandle(this);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
         AppWindow.GetFromWindowId(id).Resize(new SizeInt32(780, 780));
@@ -64,6 +66,11 @@ public sealed partial class DetailsWindow : Window
                 .OfType<TabViewItem>()
                 .FirstOrDefault(item => (item.Tag as string) == selectedTag);
             ProviderTabs.SelectedItem = restore ?? ProviderTabs.TabItems.FirstOrDefault();
+        }
+        catch
+        {
+            // A malformed connection or snapshot must never crash the details
+            // window. The next StateChanged event will retry the rebuild.
         }
         finally
         {
@@ -142,7 +149,7 @@ public sealed partial class DetailsWindow : Window
         var autoCard = new StackPanel { Spacing = 10 };
         autoCard.Children.Add(new TextBlock
         {
-            Text = "Scan this PC for signed-in AI tools and connect them automatically. QuotaDock reads Codex and Claude Code usage locally — no keys, no copy/paste.",
+            Text = "Scan this PC for signed-in AI tools and connect them automatically. QuotaDock reads Codex, Claude, Grok, and Kimi usage locally — no keys, no copy/paste.",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
             Foreground = Brush("QuotaDockMutedBrush")
@@ -153,7 +160,7 @@ public sealed partial class DetailsWindow : Window
             Background = Brush("QuotaDockAccentBrush"),
             Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 34, 29)),
             Padding = new Thickness(14, 10, 14, 10),
-            CornerRadius = new CornerRadius(999)
+            CornerRadius = new CornerRadius(4)
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(autoButton, "ConnectTabAutoDetectButton");
         autoButton.Click += AutoDetect_Click;
@@ -169,26 +176,14 @@ public sealed partial class DetailsWindow : Window
             "Connect Claude subscription",
             "Reads Claude Code session & weekly limits automatically from your local sign-in.",
             "Connect", ConnectClaude_Click));
-
-        content.Children.Add(SectionLabel("OPENAI-COMPATIBLE"));
         content.Children.Add(ConnectActionCard(
-            "Add OpenAI-compatible provider",
-            "OpenRouter, DeepSeek, Groq, Mistral, xAI, Together, Ollama and more — or any custom endpoint.",
-            "Add", ConnectCompatible_Click));
-
-        content.Children.Add(SectionLabel("ORGANIZATION APIs"));
+            "Connect Grok subscription",
+            "Reads Grok Build credits automatically from your local sign-in.",
+            "Connect", ConnectGrok_Click));
         content.Children.Add(ConnectActionCard(
-            "OpenAI organization API",
-            "Admin key · month-to-date tokens, requests and cost.",
-            "Connect", ConnectOpenAi_Click));
-        content.Children.Add(ConnectActionCard(
-            "Anthropic organization API",
-            "Admin key · message usage and cost reports.",
-            "Connect", ConnectAnthropic_Click));
-        content.Children.Add(ConnectActionCard(
-            "Alibaba Token Plan International",
-            "Isolated console reader · team plan credits and resets.",
-            "Connect", ConnectAlibaba_Click));
+            "Connect Kimi subscription",
+            "Reads Kimi Code session & weekly limits automatically from your local sign-in.",
+            "Connect", ConnectKimi_Click));
 
         content.Children.Add(BuildStartupCard());
 
@@ -261,7 +256,7 @@ public sealed partial class DetailsWindow : Window
             Content = actionText,
             VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(16, 7, 16, 7),
-            CornerRadius = new CornerRadius(999)
+            CornerRadius = new CornerRadius(4)
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, title);
         button.Click += handler;
@@ -314,11 +309,37 @@ public sealed partial class DetailsWindow : Window
         var source = connection.Source switch
         {
             DataSourceKind.OfficialApi => "Official API",
-            DataSourceKind.LocalCli when connection.Provider == ProviderKind.Anthropic => "Local Claude sign-in",
-            DataSourceKind.LocalCli => "Local CLI",
-            DataSourceKind.DashboardReader => "Isolated dashboard reader",
+            DataSourceKind.LocalCli => "Local sign-in",
             _ => connection.Source.ToString()
         };
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        // When the local sign-in is missing or expired, the app fixes it itself:
+        // one click runs the provider CLI's own browser login, then reconnects.
+        if (latest is { Health: ConnectionHealth.AuthenticationRequired } &&
+            connection.Source == DataSourceKind.LocalCli)
+        {
+            var signIn = new Button
+            {
+                Content = "Sign in",
+                Tag = connection.Provider,
+                VerticalAlignment = VerticalAlignment.Center,
+                Padding = new Thickness(12, 5, 12, 5),
+                CornerRadius = new CornerRadius(4),
+                Background = Brush("QuotaDockAccentBrush"),
+                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 34, 29))
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                signIn, $"Sign in to {connection.AccountLabel}");
+            signIn.Click += SignIn_Click;
+            actions.Children.Add(signIn);
+        }
 
         var disconnect = new Button
         {
@@ -326,10 +347,11 @@ public sealed partial class DetailsWindow : Window
             Tag = connection.Id,
             VerticalAlignment = VerticalAlignment.Center,
             Padding = new Thickness(12, 5, 12, 5),
-            CornerRadius = new CornerRadius(999)
+            CornerRadius = new CornerRadius(4)
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(disconnect, $"Disconnect {connection.AccountLabel}");
         disconnect.Click += Disconnect_Click;
+        actions.Children.Add(disconnect);
 
         var text = new StackPanel();
         text.Children.Add(new TextBlock
@@ -366,8 +388,8 @@ public sealed partial class DetailsWindow : Window
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.Children.Add(text);
-        Grid.SetColumn(disconnect, 1);
-        grid.Children.Add(disconnect);
+        Grid.SetColumn(actions, 1);
+        grid.Children.Add(actions);
         return Card(grid);
     }
 
@@ -416,7 +438,7 @@ public sealed partial class DetailsWindow : Window
             {
                 Margin = new Thickness(0, 8, 0, 0),
                 Height = 6,
-                CornerRadius = new CornerRadius(999),
+                CornerRadius = new CornerRadius(4),
                 Minimum = 0,
                 Maximum = 100,
                 Value = (double)(fraction * 100m),
@@ -454,7 +476,7 @@ public sealed partial class DetailsWindow : Window
                 Content = "Save soft budget",
                 Tag = budgetBox,
                 Padding = new Thickness(12, 5, 12, 5),
-                CornerRadius = new CornerRadius(999)
+                CornerRadius = new CornerRadius(4)
             };
             saveBudget.Click += SaveBudget_Click;
             var budgetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -486,6 +508,82 @@ public sealed partial class DetailsWindow : Window
     }
 
     // ---- Connect actions --------------------------------------------------
+
+    private async void SignIn_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: ProviderKind provider } button)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        try
+        {
+            await RunProviderSignInAsync(provider);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async Task RunProviderSignInAsync(ProviderKind provider)
+    {
+        var providerName = provider switch
+        {
+            ProviderKind.Anthropic => "Claude",
+            ProviderKind.Xai => "Grok",
+            ProviderKind.Moonshot => "Kimi",
+            _ => "Codex"
+        };
+        SetStatus($"Opening your browser for the {providerName} sign-in… Finish the login there and QuotaDock will pick it up automatically.",
+            InfoBarSeverity.Informational);
+
+        var outcome = provider switch
+        {
+            ProviderKind.Anthropic => await runtime.SignInClaudeAsync(),
+            ProviderKind.Xai => await runtime.SignInGrokAsync(),
+            ProviderKind.Moonshot => await runtime.SignInKimiAsync(),
+            _ => await runtime.SignInCodexAsync()
+        };
+
+        if (outcome.Succeeded)
+        {
+            SetStatus($"{providerName} is signed in and up to date.", InfoBarSeverity.Success);
+            return;
+        }
+
+        if (outcome.CliMissing && outcome.InstallUrl is not null)
+        {
+            await ShowInstallDialogAsync(providerName, outcome.Message, outcome.InstallUrl);
+            return;
+        }
+
+        SetStatus(outcome.Message, InfoBarSeverity.Error);
+    }
+
+    private async Task ShowInstallDialogAsync(string providerName, string message, string installUrl)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = $"Install {providerName} first",
+            Content = new TextBlock
+            {
+                Text = message + "\n\nAfter installation, come back and press Sign in — QuotaDock handles the login for you.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Open installation guide",
+            CloseButtonText = "Not now",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = DetailsRoot.XamlRoot
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            OpenDefaultBrowser(installUrl);
+            SetStatus($"The official {providerName} installation guide opened in your browser.",
+                InfoBarSeverity.Informational);
+        }
+    }
 
     private async void AutoDetect_Click(object sender, RoutedEventArgs e)
     {
@@ -575,8 +673,31 @@ public sealed partial class DetailsWindow : Window
             "Codex account",
             null,
             new Dictionary<string, string>(StringComparer.Ordinal) { ["executable"] = executable });
-        SetStatus(result.IsValid ? "Codex connected." : result.Message!,
-            result.IsValid ? InfoBarSeverity.Success : InfoBarSeverity.Error);
+        if (result.IsValid)
+        {
+            SetStatus("Codex connected.", InfoBarSeverity.Success);
+            return;
+        }
+
+        // The CLI is installed but could not report usage — most often because
+        // it is signed out. Offer the app-driven browser login.
+        var dialog = new ContentDialog
+        {
+            Title = "Sign in to Codex",
+            Content = new TextBlock
+            {
+                Text = result.Message + "\n\nQuotaDock can sign you in now: your default browser opens on the official OpenAI login, and QuotaDock connects automatically once you finish.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Sign in with browser",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = DetailsRoot.XamlRoot
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await RunProviderSignInAsync(ProviderKind.OpenAI);
+        }
     }
 
     private async void ConnectClaude_Click(object sender, RoutedEventArgs e)
@@ -589,165 +710,83 @@ public sealed partial class DetailsWindow : Window
             return;
         }
 
+        // The local sign-in is missing or expired. Offer the app-driven login:
+        // QuotaDock runs Claude Code's own browser sign-in and reconnects.
         var dialog = new ContentDialog
         {
-            Title = "Connect Claude subscription",
+            Title = "Sign in to Claude",
             Content = new TextBlock
             {
-                Text = result.Message + "\n\nClaude Code stores a local sign-in that QuotaDock reads to show your session and weekly limits automatically. Install Claude Code and run it once, then try again.",
+                Text = result.Message + "\n\nQuotaDock can sign you in now: your default browser opens on the official Claude login, and QuotaDock connects automatically once you finish.",
                 TextWrapping = TextWrapping.Wrap
             },
-            PrimaryButtonText = "Open Claude Code setup",
+            PrimaryButtonText = "Sign in with browser",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = DetailsRoot.XamlRoot
         };
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            OpenDefaultBrowser(ClaudeInstallUrl);
+            await RunProviderSignInAsync(ProviderKind.Anthropic);
         }
     }
 
-    private async void ConnectOpenAi_Click(object sender, RoutedEventArgs e) =>
-        await ConnectAdminApiAsync("openai-organization", "OpenAI organization", "OpenAI Admin API key");
-
-    private async void ConnectAnthropic_Click(object sender, RoutedEventArgs e) =>
-        await ConnectAdminApiAsync("anthropic-organization", "Anthropic organization", "Anthropic Admin API key");
-
-    private void ConnectAlibaba_Click(object sender, RoutedEventArgs e) =>
-        ((App)Application.Current).OpenDashboardReader(ProviderKind.Alibaba);
-
-    private async void ConnectCompatible_Click(object sender, RoutedEventArgs e)
+    private async void ConnectGrok_Click(object sender, RoutedEventArgs e)
     {
-        var presetBox = new ComboBox
+        SetStatus("Reading your local Grok sign-in…", InfoBarSeverity.Informational);
+        var result = await runtime.ConnectAsync("grok-subscription", "Grok account", null, null);
+        if (result.IsValid)
         {
-            Header = "Preset",
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        presetBox.Items.Add(new ComboBoxItem { Content = "Custom endpoint", Tag = string.Empty });
-        foreach (var preset in OpenAiCompatiblePresets.All)
-        {
-            presetBox.Items.Add(new ComboBoxItem { Content = preset.DisplayName, Tag = preset.Id });
+            SetStatus("Grok connected. Credits will update automatically.", InfoBarSeverity.Success);
+            return;
         }
-        presetBox.SelectedIndex = 0;
-
-        var account = new TextBox { Header = "Provider label", Text = "Custom provider", MaxLength = 80 };
-        var baseUrl = new TextBox { Header = "OpenAI-compatible base URL", PlaceholderText = "https://provider.example/v1", MaxLength = 2048 };
-        var model = new TextBox { Header = "Model ID", PlaceholderText = "provider-model-id", MaxLength = 256 };
-        var key = new PasswordBox { Header = "API key (optional for local providers)", PasswordChar = "●", MaxLength = 4096 };
-        var usageUrl = new TextBox { Header = "Aggregate usage URL (optional, same origin)", PlaceholderText = "https://provider.example/admin/usage", MaxLength = 2048 };
-
-        presetBox.SelectionChanged += (_, _) =>
-        {
-            if (presetBox.SelectedItem is ComboBoxItem { Tag: string id } && !string.IsNullOrEmpty(id) &&
-                OpenAiCompatiblePresets.FindById(id) is { } preset)
-            {
-                account.Text = preset.DisplayName;
-                baseUrl.Text = preset.BaseUrl;
-                model.Text = preset.DefaultModel;
-            }
-        };
-
-        var fields = new StackPanel { Spacing = 10 };
-        fields.Children.Add(presetBox);
-        fields.Children.Add(account);
-        fields.Children.Add(baseUrl);
-        fields.Children.Add(model);
-        fields.Children.Add(key);
-        fields.Children.Add(usageUrl);
-        fields.Children.Add(new TextBlock
-        {
-            Text = "Model access is validated through /v1/models. Without a compatible usage URL, QuotaDock monitors availability only and never invents usage values. HTTPS is required except for localhost.",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Foreground = Brush("QuotaDockMutedBrush")
-        });
 
         var dialog = new ContentDialog
         {
-            Title = "Add OpenAI-compatible provider",
-            Content = new ScrollViewer { Content = fields, MaxHeight = 520 },
-            PrimaryButtonText = "Validate and connect",
+            Title = "Sign in to Grok",
+            Content = new TextBlock
+            {
+                Text = result.Message + "\n\nQuotaDock can sign you in now: your default browser opens on the official xAI login, and QuotaDock connects automatically once you finish.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Sign in with browser",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = DetailsRoot.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            key.Password = string.Empty;
-            return;
+            await RunProviderSignInAsync(ProviderKind.Xai);
         }
-
-        if (string.IsNullOrWhiteSpace(account.Text) ||
-            string.IsNullOrWhiteSpace(baseUrl.Text) ||
-            string.IsNullOrWhiteSpace(model.Text))
-        {
-            key.Password = string.Empty;
-            SetStatus("Provider label, base URL, and model ID are required.", InfoBarSeverity.Error);
-            return;
-        }
-
-        SetStatus("Validating model access…", InfoBarSeverity.Informational);
-        var result = await runtime.ConnectAsync(
-            "openai-compatible",
-            account.Text,
-            key.Password,
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                [OpenAiCompatibleConnector.BaseUrlSetting] = baseUrl.Text,
-                [OpenAiCompatibleConnector.ModelSetting] = model.Text,
-                [OpenAiCompatibleConnector.UsageUrlSetting] = usageUrl.Text
-            });
-        key.Password = string.Empty;
-        SetStatus(
-            result.IsValid
-                ? string.IsNullOrWhiteSpace(usageUrl.Text)
-                    ? "Provider connected. Model availability is monitored; aggregate usage is not configured."
-                    : "Provider connected with aggregate usage tracking."
-                : result.Message!,
-            result.IsValid ? InfoBarSeverity.Success : InfoBarSeverity.Error);
     }
 
-    private async Task ConnectAdminApiAsync(string connectorId, string defaultLabel, string keyLabel)
+    private async void ConnectKimi_Click(object sender, RoutedEventArgs e)
     {
-        var account = new TextBox { Header = "Account label", Text = defaultLabel, MaxLength = 80 };
-        var key = new PasswordBox { Header = keyLabel, PasswordChar = "●", MaxLength = 256 };
-        var fields = new StackPanel { Spacing = 12 };
-        fields.Children.Add(account);
-        fields.Children.Add(key);
-        fields.Children.Add(new TextBlock
+        SetStatus("Reading your local Kimi sign-in…", InfoBarSeverity.Informational);
+        var result = await runtime.ConnectAsync("kimi-subscription", "Kimi account", null, null);
+        if (result.IsValid)
         {
-            Text = "Validation performs a read-only usage request. Invalid keys are immediately removed from Windows Credential Manager.",
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 11,
-            Foreground = Brush("QuotaDockMutedBrush")
-        });
+            SetStatus("Kimi connected. Session & weekly limits will update automatically.", InfoBarSeverity.Success);
+            return;
+        }
 
         var dialog = new ContentDialog
         {
-            Title = $"Connect {defaultLabel}",
-            Content = fields,
-            PrimaryButtonText = "Validate and connect",
+            Title = "Sign in to Kimi",
+            Content = new TextBlock
+            {
+                Text = result.Message + "\n\nQuotaDock can sign you in now: your default browser opens on the official Kimi login, and QuotaDock connects automatically once you finish.",
+                TextWrapping = TextWrapping.Wrap
+            },
+            PrimaryButtonText = "Sign in with browser",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = DetailsRoot.XamlRoot
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
-            return;
+            await RunProviderSignInAsync(ProviderKind.Moonshot);
         }
-
-        if (string.IsNullOrWhiteSpace(key.Password))
-        {
-            SetStatus("An admin API key is required.", InfoBarSeverity.Error);
-            return;
-        }
-
-        SetStatus("Validating the provider connection…", InfoBarSeverity.Informational);
-        var result = await runtime.ConnectAsync(connectorId, account.Text, key.Password);
-        key.Password = string.Empty;
-        SetStatus(result.IsValid ? $"{defaultLabel} connected." : result.Message!,
-            result.IsValid ? InfoBarSeverity.Success : InfoBarSeverity.Error);
     }
 
     private async void Disconnect_Click(object sender, RoutedEventArgs e)
@@ -769,13 +808,6 @@ public sealed partial class DetailsWindow : Window
         var pins = runtime.Settings.PinnedMetricIds.ToList();
         if (checkBox.IsChecked == true && !pins.Contains(key, StringComparer.Ordinal))
         {
-            if (pins.Count >= 4)
-            {
-                checkBox.IsChecked = false;
-                SetStatus("The widget can show up to four pinned metrics.", InfoBarSeverity.Warning);
-                return;
-            }
-
             pins.Add(key);
         }
         else if (checkBox.IsChecked != true)
@@ -888,7 +920,7 @@ public sealed partial class DetailsWindow : Window
         Background = Brush("QuotaDockSurfaceBrush"),
         BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 43, 51, 65)),
         BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(16),
+        CornerRadius = new CornerRadius(6),
         Child = content
     };
 
@@ -903,9 +935,10 @@ public sealed partial class DetailsWindow : Window
 
     private static string ProviderDisplayName(ProviderKind provider) => provider switch
     {
-        ProviderKind.OpenAI => "OpenAI",
-        ProviderKind.Anthropic => "Anthropic",
-        ProviderKind.Alibaba => "Alibaba",
+        ProviderKind.OpenAI => "Codex",
+        ProviderKind.Anthropic => "Claude",
+        ProviderKind.Xai => "Grok",
+        ProviderKind.Moonshot => "Kimi",
         _ => provider.ToString()
     };
 
@@ -913,7 +946,8 @@ public sealed partial class DetailsWindow : Window
     {
         ProviderKind.OpenAI => "\uE9D9",
         ProviderKind.Anthropic => "\uE8BD",
-        ProviderKind.Alibaba => "\uE909",
+        ProviderKind.Xai => "\uE7C3",
+        ProviderKind.Moonshot => "\uE735",
         _ => "\uE7C3"
     };
 
@@ -947,7 +981,7 @@ public sealed partial class DetailsWindow : Window
             Margin = new Thickness(0, 5, 0, 0),
             Padding = new Thickness(10, 3, 10, 3),
             HorizontalAlignment = HorizontalAlignment.Left,
-            CornerRadius = new CornerRadius(999),
+            CornerRadius = new CornerRadius(4),
             BorderBrush = Brush(brush),
             BorderThickness = new Thickness(1),
             Child = new TextBlock

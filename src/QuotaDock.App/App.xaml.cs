@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using QuotaDock.App.Runtime;
-using QuotaDock.Core.Domain;
 
 namespace QuotaDock.App;
 
@@ -9,7 +8,6 @@ public partial class App : Application
     private Window? window;
     private QuotaDockRuntime? runtime;
     private DetailsWindow? detailsWindow;
-    private readonly Dictionary<ProviderKind, DashboardReaderWindow> dashboardWindows = [];
     private bool isExiting;
     private bool isEndToEndMode;
 
@@ -40,26 +38,6 @@ public partial class App : Application
         detailsWindow.Activate();
     }
 
-    internal async void OpenDashboardReader(ProviderKind provider)
-    {
-        if (runtime is null || provider != ProviderKind.Alibaba)
-        {
-            return;
-        }
-
-        if (dashboardWindows.TryGetValue(provider, out var existing))
-        {
-            existing.Activate();
-            return;
-        }
-
-        var connection = await runtime.EnsureDashboardConnectionAsync(provider);
-        var reader = new DashboardReaderWindow(runtime, connection);
-        dashboardWindows[provider] = reader;
-        reader.Closed += (_, _) => dashboardWindows.Remove(provider);
-        reader.Activate();
-    }
-
     internal async void ExitApplication()
     {
         if (isExiting)
@@ -68,12 +46,6 @@ public partial class App : Application
         }
 
         isExiting = true;
-        foreach (var dashboardWindow in dashboardWindows.Values.ToArray())
-        {
-            dashboardWindow.AllowClose();
-            dashboardWindow.Close();
-        }
-        dashboardWindows.Clear();
         detailsWindow?.Close();
         if (window is MainWindow mainWindow)
         {
@@ -91,6 +63,22 @@ public partial class App : Application
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs args)
     {
+        // Always log the exception so we can diagnose crashes.
+        try
+        {
+            var logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "QuotaDock",
+                "crash.log");
+            File.AppendAllText(
+                logPath,
+                $"[{DateTimeOffset.Now:O}] {args.Exception}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Logging must never interfere with the app.
+        }
+
         if (isEndToEndMode)
         {
             try
@@ -105,6 +93,8 @@ public partial class App : Application
             }
         }
 
-        args.Handled = isEndToEndMode;
+        // In normal mode, swallow the exception so the app stays alive.
+        // A provider refresh or UI rebuild error must never crash the widget.
+        args.Handled = true;
     }
 }

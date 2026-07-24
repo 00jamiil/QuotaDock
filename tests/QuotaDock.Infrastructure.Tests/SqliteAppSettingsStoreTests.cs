@@ -27,7 +27,7 @@ public sealed class SqliteAppSettingsStoreTests : IAsyncLifetime
     {
         var settings = await store.LoadAsync();
 
-        Assert.Equal(360, settings.Window.Width);
+        Assert.Equal(420, settings.Window.Width);
         Assert.True(settings.Window.IsAlwaysOnTop);
         Assert.False(settings.StartWithWindows);
         Assert.Empty(settings.PinnedMetricIds);

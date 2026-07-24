@@ -8,7 +8,6 @@ public sealed class RefreshPolicyTests
     [Theory]
     [InlineData(DataSourceKind.OfficialApi, 5)]
     [InlineData(DataSourceKind.LocalCli, 5)]
-    [InlineData(DataSourceKind.DashboardReader, 15)]
     public void IntervalFor_UsesSourceSpecificDefaults(DataSourceKind source, int minutes)
     {
         Assert.Equal(TimeSpan.FromMinutes(minutes), RefreshPolicy.IntervalFor(source));

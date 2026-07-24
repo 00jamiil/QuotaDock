@@ -1,5 +1,8 @@
 using QuotaDock.Connectors.Anthropic;
+using QuotaDock.Connectors.Moonshot;
 using QuotaDock.Connectors.OpenAI;
+using QuotaDock.Connectors.Personal;
+using QuotaDock.Connectors.Xai;
 using QuotaDock.Core.Abstractions;
 using QuotaDock.Core.Configuration;
 using QuotaDock.Core.Domain;
@@ -11,6 +14,17 @@ using QuotaDock.Infrastructure.Security;
 namespace QuotaDock.App.Runtime;
 
 public sealed record RefreshOutcome(bool Started, string Message);
+
+/// <summary>
+/// The result of an app-driven provider sign-in. When the provider's CLI is
+/// not installed, <see cref="CliMissing"/> is true and <see cref="InstallUrl"/>
+/// points at the official installation guide so the UI can offer to open it.
+/// </summary>
+public sealed record ProviderSignInOutcome(
+    bool Succeeded,
+    string Message,
+    bool CliMissing = false,
+    string? InstallUrl = null);
 
 public sealed record AutoDetectOutcome(int Added, int AlreadyPresent, IReadOnlyList<string> Notes)
 {
@@ -47,10 +61,9 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
     private readonly WindowsCredentialVault secretVault;
     private readonly IReadOnlyList<IUsageConnector> connectors;
     private readonly UsageRefreshCoordinator refreshCoordinator;
-    private readonly HttpClient openAiClient;
-    private readonly HttpClient anthropicClient;
-    private readonly HttpClient compatibleClient;
     private readonly HttpClient claudeUsageClient;
+    private readonly HttpClient grokUsageClient;
+    private readonly HttpClient kimiUsageClient;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> lastRefreshes = new(StringComparer.Ordinal);
@@ -82,34 +95,33 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
         settingsStore = new SqliteAppSettingsStore(databasePath);
         secretVault = new WindowsCredentialVault("QuotaDock");
 
-        openAiClient = new HttpClient
-        {
-            BaseAddress = new Uri("https://api.openai.com/"),
-            Timeout = TimeSpan.FromSeconds(30)
-        };
-        anthropicClient = new HttpClient
-        {
-            BaseAddress = new Uri("https://api.anthropic.com/"),
-            Timeout = TimeSpan.FromSeconds(30)
-        };
-        compatibleClient = new HttpClient(OpenAiCompatibleConnector.CreateSecureHandler())
-        {
-            Timeout = TimeSpan.FromSeconds(30)
-        };
         claudeUsageClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+        grokUsageClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+        kimiUsageClient = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
 
         connectors =
         [
-            new OpenAiOrganizationConnector(openAiClient, secretVault, TimeProvider.System),
-            new OpenAiCompatibleConnector(compatibleClient, secretVault, TimeProvider.System),
-            new AnthropicOrganizationConnector(anthropicClient, secretVault, TimeProvider.System),
             new CodexPersonalConnector(new CodexAppServerClient(), TimeProvider.System),
             new ClaudeSubscriptionConnector(
                 new ClaudeLocalCredentialsReader(),
                 new ClaudeUsageClient(claudeUsageClient),
+                TimeProvider.System),
+            new GrokSubscriptionConnector(
+                new GrokLocalCredentialsReader(),
+                new GrokUsageClient(grokUsageClient),
+                TimeProvider.System),
+            new KimiSubscriptionConnector(
+                new KimiLocalCredentialsReader(),
+                new KimiUsageClient(kimiUsageClient),
                 TimeProvider.System)
         ];
         refreshCoordinator = new UsageRefreshCoordinator(connectors, snapshotStore);
@@ -154,7 +166,7 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
     {
         // Bounded, name-only probe. No command lines, paths, or window titles are
         // read, and nothing is persisted beyond an in-memory activity timestamp.
-        foreach (var name in new[] { "codex", "claude" })
+        foreach (var name in new[] { "codex", "claude", "grok", "kimi" })
         {
             try
             {
@@ -222,9 +234,7 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
             return new RefreshOutcome(true, "Up to date");
         }
 
-        await RefreshConnectionsAsync(
-                Connections.Where(connection => connection.Source != DataSourceKind.DashboardReader).ToArray(),
-                cancellationToken)
+        await RefreshConnectionsAsync(Connections.ToArray(), cancellationToken)
             .ConfigureAwait(false);
         return new RefreshOutcome(true, LastError is null ? "Up to date" : "Some providers need attention");
     }
@@ -294,7 +304,225 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
             }
         }
 
+        // Grok subscription (local Grok CLI credential).
+        var hasGrokLocal = Connections.Any(c =>
+            c.Provider == ProviderKind.Xai && c.Source == DataSourceKind.LocalCli);
+        if (hasGrokLocal)
+        {
+            alreadyPresent++;
+        }
+        else if (new GrokLocalCredentialsReader().Read() is not null)
+        {
+            var result = await ConnectAsync(
+                "grok-subscription",
+                "Grok account",
+                null,
+                null,
+                cancellationToken).ConfigureAwait(false);
+            if (result.IsValid)
+            {
+                added++;
+                notes.Add("Grok sign-in detected and connected.");
+            }
+            else
+            {
+                notes.Add(result.Message ?? "Grok sign-in found but usage could not be read yet.");
+            }
+        }
+
+        // Kimi subscription (local Kimi Code credential).
+        var hasKimiLocal = Connections.Any(c =>
+            c.Provider == ProviderKind.Moonshot && c.Source == DataSourceKind.LocalCli);
+        if (hasKimiLocal)
+        {
+            alreadyPresent++;
+        }
+        else if (new KimiLocalCredentialsReader().Read() is not null)
+        {
+            var result = await ConnectAsync(
+                "kimi-subscription",
+                "Kimi account",
+                null,
+                null,
+                cancellationToken).ConfigureAwait(false);
+            if (result.IsValid)
+            {
+                added++;
+                notes.Add("Kimi Code sign-in detected and connected.");
+            }
+            else
+            {
+                notes.Add(result.Message ?? "Kimi Code sign-in found but usage could not be read yet.");
+            }
+        }
+
         return new AutoDetectOutcome(added, alreadyPresent, notes);
+    }
+
+    /// <summary>
+    /// App-driven sign-in for the Claude subscription. Runs the official
+    /// Claude Code login (which opens the user's default browser), then reads
+    /// the refreshed local credential and connects or refreshes the provider.
+    /// The user never has to touch a terminal.
+    /// </summary>
+    public async Task<ProviderSignInOutcome> SignInClaudeAsync(CancellationToken cancellationToken = default)
+    {
+        var executable = await new ClaudeCliLocator().FindAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (executable is null)
+        {
+            return new ProviderSignInOutcome(
+                false,
+                "Claude Code is not installed on this PC. QuotaDock reads your Claude limits through Claude Code, so install it first, then sign in from here.",
+                CliMissing: true,
+                InstallUrl: "https://docs.claude.com/en/docs/claude-code/setup");
+        }
+
+        var login = await new CliSignInLauncher()
+            .SignInAsync(executable, ["auth", "login", "--claudeai"], cancellationToken)
+            .ConfigureAwait(false);
+        if (!login.Succeeded)
+        {
+            return new ProviderSignInOutcome(false, login.Message);
+        }
+
+        return await CompleteSignInAsync(
+            ProviderKind.Anthropic,
+            "claude-subscription",
+            "Claude account",
+            null,
+            "Claude sign-in finished, but usage could not be read yet.",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// App-driven sign-in for local Codex. Runs <c>codex login</c> (which opens
+    /// the browser) and then connects or refreshes the Codex provider.
+    /// </summary>
+    public async Task<ProviderSignInOutcome> SignInCodexAsync(CancellationToken cancellationToken = default)
+    {
+        var executable = await new CodexCliLocator().FindAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (executable is null)
+        {
+            return new ProviderSignInOutcome(
+                false,
+                "The Codex CLI is not installed on this PC. QuotaDock reads your Codex usage through the official CLI, so install it first, then sign in from here.",
+                CliMissing: true,
+                InstallUrl: "https://developers.openai.com/codex/cli/");
+        }
+
+        var login = await new CliSignInLauncher()
+            .SignInAsync(executable, ["login"], cancellationToken)
+            .ConfigureAwait(false);
+        if (!login.Succeeded)
+        {
+            return new ProviderSignInOutcome(false, login.Message);
+        }
+
+        return await CompleteSignInAsync(
+            ProviderKind.OpenAI,
+            "codex-personal",
+            "Codex account",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["executable"] = executable },
+            "Codex sign-in finished, but usage could not be read yet.",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// App-driven sign-in for local Grok. Runs the Grok CLI login (which opens
+    /// the browser) and then connects or refreshes the Grok provider.
+    /// </summary>
+    public async Task<ProviderSignInOutcome> SignInGrokAsync(CancellationToken cancellationToken = default)
+    {
+        var executable = await new GrokCliLocator().FindAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (executable is null)
+        {
+            return new ProviderSignInOutcome(
+                false,
+                "The Grok CLI is not installed on this PC. QuotaDock reads your Grok usage through the official CLI, so install it first, then sign in from here.",
+                CliMissing: true,
+                InstallUrl: "https://docs.x.ai/build/cli");
+        }
+
+        var login = await new CliSignInLauncher()
+            .SignInAsync(executable, ["login"], cancellationToken)
+            .ConfigureAwait(false);
+        if (!login.Succeeded)
+        {
+            return new ProviderSignInOutcome(false, login.Message);
+        }
+
+        return await CompleteSignInAsync(
+            ProviderKind.Xai,
+            "grok-subscription",
+            "Grok account",
+            null,
+            "Grok sign-in finished, but usage could not be read yet.",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// App-driven sign-in for local Kimi. Runs the Kimi CLI login (which opens
+    /// the browser) and then connects or refreshes the Kimi provider.
+    /// </summary>
+    public async Task<ProviderSignInOutcome> SignInKimiAsync(CancellationToken cancellationToken = default)
+    {
+        var executable = await new KimiCliLocator().FindAsync(cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (executable is null)
+        {
+            return new ProviderSignInOutcome(
+                false,
+                "The Kimi CLI is not installed on this PC. QuotaDock reads your Kimi usage through the official CLI, so install it first, then sign in from here.",
+                CliMissing: true,
+                InstallUrl: "https://moonshotai.github.io/kimi-code/");
+        }
+
+        var login = await new CliSignInLauncher()
+            .SignInAsync(executable, ["login"], cancellationToken)
+            .ConfigureAwait(false);
+        if (!login.Succeeded)
+        {
+            return new ProviderSignInOutcome(false, login.Message);
+        }
+
+        return await CompleteSignInAsync(
+            ProviderKind.Moonshot,
+            "kimi-subscription",
+            "Kimi account",
+            null,
+            "Kimi sign-in finished, but usage could not be read yet.",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ProviderSignInOutcome> CompleteSignInAsync(
+        ProviderKind provider,
+        string connectorId,
+        string accountLabel,
+        IReadOnlyDictionary<string, string>? settings,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        // If the provider is already connected, the fresh credential just needs
+        // a refresh; otherwise connect it for the first time.
+        var existing = Connections.FirstOrDefault(connection =>
+            connection.Provider == provider && connection.Source == DataSourceKind.LocalCli);
+        if (existing is not null)
+        {
+            await RefreshConnectionsAsync([existing], cancellationToken).ConfigureAwait(false);
+            var latest = Snapshots.FirstOrDefault(snapshot => snapshot.ConnectionId == existing.Id);
+            return latest is { Health: ConnectionHealth.Fresh }
+                ? new ProviderSignInOutcome(true, "Signed in. Usage is up to date.")
+                : new ProviderSignInOutcome(false, LastError ?? failureMessage);
+        }
+
+        var result = await ConnectAsync(connectorId, accountLabel, null, settings, cancellationToken)
+            .ConfigureAwait(false);
+        return result.IsValid
+            ? new ProviderSignInOutcome(true, "Signed in and connected.")
+            : new ProviderSignInOutcome(false, result.Message ?? failureMessage);
     }
 
     public async Task<ConnectionValidationResult> ConnectAsync(
@@ -351,72 +579,6 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
         }
     }
 
-    public async Task<ConnectorConnection> EnsureDashboardConnectionAsync(
-        ProviderKind provider,
-        CancellationToken cancellationToken = default)
-    {
-        if (provider is not (ProviderKind.Anthropic or ProviderKind.Alibaba))
-        {
-            throw new ArgumentOutOfRangeException(nameof(provider));
-        }
-
-        var existing = Connections.FirstOrDefault(connection =>
-            connection.Provider == provider && connection.Source == DataSourceKind.DashboardReader);
-        if (existing is not null)
-        {
-            return existing;
-        }
-
-        var prefix = provider == ProviderKind.Anthropic ? "claude-dashboard" : "alibaba-dashboard";
-        var label = provider == ProviderKind.Anthropic ? "Claude subscription" : "Alibaba Token Plan";
-        var connection = new ConnectorConnection(
-            $"{prefix}-{Guid.NewGuid():N}",
-            provider,
-            label,
-            DataSourceKind.DashboardReader,
-            null,
-            null);
-        await connectionStore.SaveAsync(connection, cancellationToken).ConfigureAwait(false);
-        Connections = await connectionStore.LoadAllAsync(cancellationToken).ConfigureAwait(false);
-        StateChanged?.Invoke(this, EventArgs.Empty);
-        return connection;
-    }
-
-    public async Task SaveDashboardResultAsync(
-        ConnectorConnection connection,
-        ConnectorFetchResult result,
-        CancellationToken cancellationToken = default)
-    {
-        if (result.IsSuccess)
-        {
-            await snapshotStore.SaveAsync(result.Snapshot!, cancellationToken).ConfigureAwait(false);
-            LastError = null;
-        }
-        else
-        {
-            LastError = result.Message;
-        }
-
-        Snapshots = await snapshotStore.LoadLatestForAllAsync(cancellationToken).ConfigureAwait(false);
-        StateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    public async Task<ConnectorFetchResult> ImportClaudeUsageAsync(
-        string visibleText,
-        CancellationToken cancellationToken = default)
-    {
-        var connection = await EnsureDashboardConnectionAsync(
-            ProviderKind.Anthropic,
-            cancellationToken).ConfigureAwait(false);
-        var result = ClaudeDashboardTextParser.Parse(
-            connection.Id,
-            connection.AccountLabel,
-            visibleText,
-            TimeProvider.System.GetUtcNow());
-        await SaveDashboardResultAsync(connection, result, cancellationToken).ConfigureAwait(false);
-        return result;
-    }
-
     public async Task DisconnectAsync(string connectionId, CancellationToken cancellationToken = default)
     {
         var connection = Connections.SingleOrDefault(item => item.Id == connectionId);
@@ -467,10 +629,9 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
 
         lifetime.Dispose();
         refreshGate.Dispose();
-        openAiClient.Dispose();
-        anthropicClient.Dispose();
-        compatibleClient.Dispose();
         claudeUsageClient.Dispose();
+        grokUsageClient.Dispose();
+        kimiUsageClient.Dispose();
         await snapshotStore.DisposeAsync().ConfigureAwait(false);
         await connectionStore.DisposeAsync().ConfigureAwait(false);
         await settingsStore.DisposeAsync().ConfigureAwait(false);
@@ -481,7 +642,19 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
         {
-            await RefreshDueConnectionsAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await RefreshDueConnectionsAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // A single bad connection or transient I/O error must never
+                // kill the background refresh loop. The next tick retries.
+            }
         }
     }
 
@@ -489,9 +662,8 @@ public sealed class QuotaDockRuntime : IAsyncDisposable
     {
         var now = TimeProvider.System.GetUtcNow();
         var due = Connections.Where(connection =>
-                connection.Source != DataSourceKind.DashboardReader &&
-                (!lastRefreshes.TryGetValue(connection.Id, out var last) ||
-                 now - last >= NextIntervalFor(connection, now)))
+                !lastRefreshes.TryGetValue(connection.Id, out var last) ||
+                now - last >= NextIntervalFor(connection, now))
             .ToArray();
         await RefreshConnectionsAsync(due, cancellationToken).ConfigureAwait(false);
     }

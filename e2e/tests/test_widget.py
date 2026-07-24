@@ -12,6 +12,7 @@ def test_widget_exposes_native_usage_controls(app_window):
     page.wait_visible(page.refresh_button)
     page.wait_visible(page.pin_button)
     page.wait_visible(page.settings_button)
+    page.wait_visible(page.tab_strip)
     page.wait_visible(page.metric_list)
     assert len(page.metric_list.children()) > 0
 
@@ -31,7 +32,7 @@ def test_manual_refresh_updates_visible_status(app_window):
 
 
 @pytest.mark.smoke
-def test_details_exposes_all_provider_connection_actions(app_window):
+def test_details_exposes_connection_surface(app_window):
     page = WidgetPage(app_window)
     page.click(page.details_button)
 
@@ -42,23 +43,9 @@ def test_details_exposes_all_provider_connection_actions(app_window):
     details = Desktop(backend="uia").window(handle=details_win32.handle)
     assert details.child_window(auto_id="DetailsRoot").exists(timeout=10)
 
-    # Codex is the primary, always-visible action.
-    assert details.child_window(auto_id="ConnectCodexButton").exists(timeout=10)
+    # The details window hosts auto-detect, a refresh-all action, and the
+    # per-provider tab surface used to connect Codex, Claude, Grok, and Kimi.
+    assert details.child_window(auto_id="AutoDetectButton").exists(timeout=10)
+    assert details.child_window(auto_id="DetailsRefreshButton").exists(timeout=10)
+    assert details.child_window(auto_id="ProviderTabs").exists(timeout=10)
     assert details.child_window(auto_id="StartupToggle").exists(timeout=10)
-
-    # The remaining providers live under a collapsed "Optional providers" group.
-    optional_toggle = details.child_window(auto_id="OptionalProvidersToggle")
-    assert optional_toggle.exists(timeout=10)
-    # Use the UIA toggle pattern rather than a physical click: the control can be
-    # scrolled out of view in the flyout, which makes coordinate clicks flaky.
-    optional_toggle.wrapper_object().toggle()
-
-    for automation_id in (
-        "ConnectCompatibleButton",
-        "ConnectOpenAiButton",
-        "ConnectClaudeButton",
-        "ImportClaudeButton",
-        "ConnectAnthropicButton",
-        "ConnectAlibabaButton",
-    ):
-        assert details.child_window(auto_id=automation_id).exists(timeout=10)

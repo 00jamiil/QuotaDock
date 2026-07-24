@@ -8,7 +8,6 @@ public static class RefreshPolicy
 
     public static TimeSpan IntervalFor(DataSourceKind source) => source switch
     {
-        DataSourceKind.DashboardReader => TimeSpan.FromMinutes(15),
         DataSourceKind.OfficialApi or DataSourceKind.LocalCli => TimeSpan.FromMinutes(5),
         _ => throw new ArgumentOutOfRangeException(nameof(source), source, null)
     };

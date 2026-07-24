@@ -74,12 +74,4 @@ public sealed class AdaptiveRefreshPlannerTests
         var next = AdaptiveRefreshPlanner.NextInterval(Context(soonestReset: TimeSpan.FromMinutes(1)));
         Assert.Equal(AdaptiveRefreshPlanner.AdaptiveFloor, next);
     }
-
-    [Fact]
-    public void NextInterval_AdaptiveDashboardIdleStaysWithinCeiling()
-    {
-        var next = AdaptiveRefreshPlanner.NextInterval(Context(source: DataSourceKind.DashboardReader));
-        Assert.True(next <= AdaptiveRefreshPlanner.AdaptiveIdleCeiling);
-        Assert.Equal(TimeSpan.FromMinutes(15), next);
-    }
 }

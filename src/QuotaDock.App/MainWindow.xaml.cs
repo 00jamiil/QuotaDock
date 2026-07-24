@@ -2,23 +2,35 @@ using System.Collections.ObjectModel;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using QuotaDock.App.Presentation;
 using QuotaDock.App.Runtime;
 using QuotaDock.Core.Domain;
 using WinRT.Interop;
 using Windows.Graphics;
+using Windows.UI;
 
 namespace QuotaDock.App;
 
 public sealed partial class MainWindow : Window
 {
+    private const string HomeTab = "home";
+    private static readonly ProviderKind[] TabProviders =
+    [
+        ProviderKind.OpenAI,
+        ProviderKind.Anthropic,
+        ProviderKind.Xai,
+        ProviderKind.Moonshot
+    ];
+
     private readonly QuotaDockRuntime runtime;
-    private readonly ObservableCollection<MetricCardViewModel> metricCards = [];
+    private readonly ObservableCollection<MetricCardViewModel> activeCards = [];
     private readonly HashSet<string> notifiedMetrics = new(StringComparer.Ordinal);
     private AppWindow? appWindow;
     private OverlappedPresenter? presenter;
     private TrayIconService? trayIcon;
+    private string selectedTab = HomeTab;
     private bool isPinned;
     private bool closeAllowed;
     private bool initialized;
@@ -27,8 +39,9 @@ public sealed partial class MainWindow : Window
     {
         this.runtime = runtime;
         InitializeComponent();
-        MetricList.ItemsSource = metricCards;
+        MetricRepeater.ItemsSource = activeCards;
         ConfigureNativeWindow();
+        WindowStyleHelper.Apply(this, useMica: false);
         WidgetRoot.Loaded += WidgetRoot_Loaded;
         runtime.StateChanged += Runtime_StateChanged;
     }
@@ -60,16 +73,20 @@ public sealed partial class MainWindow : Window
         var handle = WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
         appWindow = AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new SizeInt32(360, 560));
+        appWindow.Resize(new SizeInt32(420, 640));
         appWindow.Closing += AppWindow_Closing;
+        appWindow.Changed += AppWindow_Changed;
         presenter = appWindow.Presenter as OverlappedPresenter;
         if (presenter is not null)
         {
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
+            presenter.IsResizable = true;
+            presenter.IsMaximizable = true;
             presenter.IsMinimizable = false;
-            presenter.SetBorderAndTitleBar(false, false);
         }
+
+        // Hide caption buttons (close/min/max) while keeping the window frame
+        // that DWM needs for rounded corners.
+        WindowStyleHelper.HideCaptionButtons(handle);
 
         if (!runtime.IsEndToEndMode)
         {
@@ -79,6 +96,23 @@ public sealed partial class MainWindow : Window
                 () => _ = RefreshAsync(),
                 () => ((App)Application.Current).ShowDetails(),
                 () => ((App)Application.Current).ExitApplication());
+        }
+    }
+
+    private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        // Keep the widget usable at any size: clamp to a sensible minimum so the
+        // adaptive grid always has room to render at least one card column.
+        if (!args.DidSizeChange)
+        {
+            return;
+        }
+
+        var width = sender.Size.Width;
+        var height = sender.Size.Height;
+        if (width < 320 || height < 440)
+        {
+            sender.Resize(new SizeInt32(Math.Max(width, 320), Math.Max(height, 440)));
         }
     }
 
@@ -94,8 +128,9 @@ public sealed partial class MainWindow : Window
         try
         {
             await runtime.InitializeAsync();
+            BuildTabStrip();
             RestoreWindowPlacement();
-            RebuildCards();
+            RebuildContent();
         }
         catch
         {
@@ -106,39 +141,173 @@ public sealed partial class MainWindow : Window
 
     private void Runtime_StateChanged(object? sender, EventArgs e)
     {
-        DispatcherQueue.TryEnqueue(RebuildCards);
+        DispatcherQueue.TryEnqueue(RebuildContent);
     }
 
-    private void RebuildCards()
-    {
-        var now = TimeProvider.System.GetUtcNow();
-        var all = runtime.Snapshots
-            .SelectMany(snapshot => snapshot.Metrics.Select(metric =>
-                MetricCardViewModel.Create(snapshot, metric, runtime.Settings, now)))
-            .ToArray();
-        var pinned = runtime.Settings.PinnedMetricIds;
-        var selected = pinned.Count > 0
-            ? pinned.Select(key => all.FirstOrDefault(metric => metric.Key == key))
-                .Where(metric => metric is not null)
-                .Cast<MetricCardViewModel>()
-            : all.AsEnumerable();
+    // ---- Tabs -------------------------------------------------------------
 
-        metricCards.Clear();
-        foreach (var metric in selected.Take(4))
+    private void BuildTabStrip()
+    {
+        TabStrip.Children.Clear();
+        AddTab(HomeTab, "Home");
+        foreach (var provider in TabProviders)
         {
-            metricCards.Add(metric);
+            AddTab(ProviderTab(provider), TabLabel(provider));
         }
 
-        MetricList.Visibility = metricCards.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        EmptyState.Visibility = metricCards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateTabStyles();
+    }
 
+    private void AddTab(string tag, string label)
+    {
+        var button = new Button
+        {
+            Tag = tag,
+            Content = label,
+            Padding = new Thickness(12, 5, 12, 5),
+            CornerRadius = new CornerRadius(6),
+            FontSize = 12,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            BorderThickness = new Thickness(0)
+        };
+        button.Click += Tab_Click;
+        TabStrip.Children.Add(button);
+    }
+
+    private void UpdateTabStyles()
+    {
+        foreach (var tab in TabStrip.Children.OfType<Button>())
+        {
+            var isSelected = string.Equals(tab.Tag as string, selectedTab, StringComparison.Ordinal);
+            tab.Background = isSelected
+                ? ResourceBrush("QuotaDockAccentBrush")
+                : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            tab.Foreground = isSelected
+                ? new SolidColorBrush(Color.FromArgb(255, 16, 34, 29))
+                : ResourceBrush("QuotaDockMutedBrush");
+        }
+    }
+
+    private void Tab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tag } &&
+            !string.Equals(tag, selectedTab, StringComparison.Ordinal))
+        {
+            selectedTab = tag;
+            UpdateTabStyles();
+            RebuildContent();
+        }
+    }
+
+    private static string ProviderTab(ProviderKind provider) => $"provider:{provider}";
+
+    private static string TabLabel(ProviderKind provider) => provider switch
+    {
+        ProviderKind.OpenAI => "Codex",
+        ProviderKind.Anthropic => "Claude",
+        ProviderKind.Xai => "Grok",
+        ProviderKind.Moonshot => "Kimi",
+        _ => provider.ToString()
+    };
+
+    private static ProviderKind? ParseProvider(string tab) =>
+        tab.StartsWith("provider:", StringComparison.Ordinal) &&
+        Enum.TryParse<ProviderKind>(tab["provider:".Length..], out var kind)
+            ? kind
+            : null;
+
+    // ---- Content ----------------------------------------------------------
+
+    private void RebuildContent()
+    {
+        try
+        {
+            var now = TimeProvider.System.GetUtcNow();
+            var all = runtime.Snapshots
+                .SelectMany(snapshot => snapshot.Metrics.Select(metric =>
+                    MetricCardViewModel.Create(snapshot, metric, runtime.Settings, now)))
+                .ToArray();
+
+            var selected = SelectedCards(all);
+            activeCards.Clear();
+            foreach (var card in selected)
+            {
+                activeCards.Add(card);
+            }
+
+            MetricRepeater.Visibility = activeCards.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            EmptyState.Visibility = activeCards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            UpdateEmptyState();
+            UpdateStatus();
+            UpdateFreshness(now);
+            EvaluateNotifications();
+        }
+        catch
+        {
+            // A malformed snapshot or missing resource must never crash the
+            // widget. The next StateChanged event will retry.
+            StatusLabel.Text = "Display error — saved values are safe";
+            HealthDot.Fill = ResourceBrush("QuotaDockWarningBrush");
+        }
+    }
+
+    private IEnumerable<MetricCardViewModel> SelectedCards(MetricCardViewModel[] all)
+    {
+        if (selectedTab == HomeTab)
+        {
+            // Home shows the metrics the user pinned, in pin order. Before any
+            // pinning happens it falls back to every available metric so the
+            // widget is useful from first launch.
+            var pinned = runtime.Settings.PinnedMetricIds;
+            if (pinned.Count > 0)
+            {
+                return pinned
+                    .Select(key => all.FirstOrDefault(card => card.Key == key))
+                    .Where(card => card is not null)
+                    .Cast<MetricCardViewModel>();
+            }
+
+            return all;
+        }
+
+        var provider = ParseProvider(selectedTab);
+        return provider is { } kind
+            ? all.Where(card => card.ProviderKind == kind)
+            : [];
+    }
+
+    private void UpdateEmptyState()
+    {
+        if (selectedTab == HomeTab)
+        {
+            EmptyIcon.Glyph = "\uE945";
+            EmptyTitle.Text = runtime.Snapshots.Count == 0
+                ? "Your AI limits, one glance away."
+                : "Your home view is empty.";
+            EmptySubtitle.Text = runtime.Snapshots.Count == 0
+                ? "Connect Codex, Claude, Grok, or Kimi to start tracking usage."
+                : "Pin metrics from any provider tab to build your home view.";
+            EmptyActionButton.Content = runtime.Snapshots.Count == 0 ? "Connect provider" : "Open details";
+        }
+        else
+        {
+            var name = ParseProvider(selectedTab) is { } kind ? TabLabel(kind) : "Provider";
+            EmptyIcon.Glyph = "\uE8BD";
+            EmptyTitle.Text = $"No {name} usage yet.";
+            EmptySubtitle.Text = $"Connect {name} to see its limits here.";
+            EmptyActionButton.Content = "Connect provider";
+        }
+    }
+
+    private void UpdateStatus()
+    {
         var staleCount = runtime.Snapshots.Count(snapshot => snapshot.Health == ConnectionHealth.Stale);
         if (!string.IsNullOrWhiteSpace(runtime.LastError))
         {
             StatusLabel.Text = runtime.LastError;
             HealthDot.Fill = ResourceBrush("QuotaDockWarningBrush");
         }
-        else if (metricCards.Count == 0)
+        else if (runtime.Snapshots.Count == 0)
         {
             StatusLabel.Text = "Connect a provider to begin";
             HealthDot.Fill = ResourceBrush("QuotaDockMutedBrush");
@@ -153,12 +322,37 @@ public sealed partial class MainWindow : Window
             StatusLabel.Text = $"{runtime.Snapshots.Count} account{(runtime.Snapshots.Count == 1 ? string.Empty : "s")} up to date";
             HealthDot.Fill = ResourceBrush("QuotaDockAccentBrush");
         }
+    }
 
-        var latest = runtime.Snapshots.OrderByDescending(snapshot => snapshot.CapturedAt).FirstOrDefault();
+    private void UpdateFreshness(DateTimeOffset now)
+    {
+        var latest = runtime.Snapshots
+            .Where(snapshot => snapshot.Metrics.Count > 0)
+            .OrderByDescending(snapshot => snapshot.CapturedAt)
+            .FirstOrDefault();
         FreshnessLabel.Text = latest is null
             ? "No local snapshots"
             : $"Updated {MetricCardViewModel.Create(latest, latest.Metrics[0], runtime.Settings, now).Freshness}";
-        EvaluateNotifications();
+    }
+
+    private async void PinToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string key })
+        {
+            return;
+        }
+
+        var pins = runtime.Settings.PinnedMetricIds.ToList();
+        if (pins.Contains(key, StringComparer.Ordinal))
+        {
+            pins.RemoveAll(item => string.Equals(item, key, StringComparison.Ordinal));
+        }
+        else
+        {
+            pins.Add(key);
+        }
+
+        await runtime.SaveSettingsAsync(runtime.Settings with { PinnedMetricIds = pins });
     }
 
     private void EvaluateNotifications()

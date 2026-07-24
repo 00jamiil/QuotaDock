@@ -10,8 +10,8 @@ public sealed class DomainContractsTests
     {
         var settings = AppSettings.Default;
 
-        Assert.Equal(360, settings.Window.Width);
-        Assert.Equal(560, settings.Window.Height);
+        Assert.Equal(420, settings.Window.Width);
+        Assert.Equal(640, settings.Window.Height);
         Assert.Equal(96, settings.Window.Dpi);
         Assert.True(settings.Window.IsAlwaysOnTop);
         Assert.False(settings.StartWithWindows);

@@ -14,8 +14,8 @@ public sealed record WindowPlacement(
     public static WindowPlacement Default { get; } = new(
         0,
         0,
-        360,
-        560,
+        420,
+        640,
         null,
         96,
         true);

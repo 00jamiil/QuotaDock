@@ -9,6 +9,7 @@ namespace QuotaDock.App.Presentation;
 
 public sealed record MetricCardViewModel(
     string Key,
+    ProviderKind ProviderKind,
     string Provider,
     string Account,
     string Label,
@@ -19,6 +20,7 @@ public sealed record MetricCardViewModel(
     double Progress,
     bool HasProgress,
     bool IsStale,
+    bool IsPinned,
     string PaceText,
     string PaceColorKey)
 {
@@ -27,6 +29,7 @@ public sealed record MetricCardViewModel(
     public bool HasPace => PaceText.Length > 0;
     public Visibility PaceVisibility => HasPace ? Visibility.Visible : Visibility.Collapsed;
     public Brush PaceBrush => (Brush)Application.Current.Resources[PaceColorKey];
+    public Brush PinBrush => (Brush)Application.Current.Resources[IsPinned ? "QuotaDockAccentBrush" : "QuotaDockMutedBrush"];
     public string AutomationName =>
         $"{Provider} {Account}, {Label}, {Value}, {Detail}, {Reset}, updated {Freshness}" +
         (HasPace ? $", {PaceText}" : string.Empty);
@@ -57,14 +60,17 @@ public sealed record MetricCardViewModel(
 
         var (paceText, paceColorKey) = DescribePace(
             UsagePace.Calculate(metric, snapshot.CapturedAt, now).Status);
+        var isPinned = settings.PinnedMetricIds.Contains(key, StringComparer.Ordinal);
 
         return new MetricCardViewModel(
             key,
+            snapshot.Provider,
             snapshot.Provider switch
             {
-                ProviderKind.OpenAI => "OPENAI",
-                ProviderKind.Anthropic => "ANTHROPIC",
-                ProviderKind.Alibaba => "ALIBABA",
+                ProviderKind.OpenAI => "CODEX",
+                ProviderKind.Anthropic => "CLAUDE",
+                ProviderKind.Xai => "GROK",
+                ProviderKind.Moonshot => "KIMI",
                 _ => snapshot.Provider.ToString().ToUpperInvariant()
             },
             snapshot.AccountLabel,
@@ -76,6 +82,7 @@ public sealed record MetricCardViewModel(
             progress,
             limit is > 0m,
             snapshot.Health == ConnectionHealth.Stale,
+            isPinned,
             paceText,
             paceColorKey);
     }

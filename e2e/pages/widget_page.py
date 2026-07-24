@@ -19,6 +19,10 @@ class WidgetPage(BasePage):
         return self.by_id("SettingsButton")
 
     @property
+    def tab_strip(self):
+        return self.by_id("TabStrip")
+
+    @property
     def details_button(self):
         return self.by_id("DetailsButton")
 

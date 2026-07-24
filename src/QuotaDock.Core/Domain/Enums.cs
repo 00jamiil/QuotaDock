@@ -4,7 +4,8 @@ public enum ProviderKind
 {
     OpenAI,
     Anthropic,
-    Alibaba
+    Xai,
+    Moonshot
 }
 
 public enum MetricKind
@@ -35,8 +36,7 @@ public enum MetricScope
 public enum DataSourceKind
 {
     OfficialApi,
-    LocalCli,
-    DashboardReader
+    LocalCli
 }
 
 public enum ConnectionHealth
