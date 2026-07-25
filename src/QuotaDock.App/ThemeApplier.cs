@@ -59,25 +59,6 @@ internal static class ThemeApplier
         SetBackdrop(window, appearance.Theme);
     }
 
-    /// <summary>Re-apply the backdrop to every live window (used for live preview).</summary>
-    public static void ApplyBackdropToAll(ThemeKind theme)
-    {
-        lock (Gate)
-        {
-            for (var i = windows.Count - 1; i >= 0; i--)
-            {
-                if (windows[i].TryGetTarget(out var window))
-                {
-                    SetBackdrop(window, theme);
-                }
-                else
-                {
-                    windows.RemoveAt(i);
-                }
-            }
-        }
-    }
-
     /// <summary>Re-apply mode + backdrop to every live window (live preview).</summary>
     public static void ApplyToAll(AppearanceSettings appearance)
     {
@@ -151,7 +132,21 @@ internal static class ThemeApplier
     {
         var winColor = ToColor(color);
         resources[colorKey] = winColor;
-        resources[brushKey] = new SolidColorBrush(winColor);
+
+        // Mutate the existing shared brush in place instead of replacing it. Every
+        // XAML binding (StaticResource and ThemeResource) and every code-built
+        // control that captured this brush holds the same object, so changing its
+        // Color — a dependency property — repaints them all at once, in every
+        // window. Replacing the object would leave all of those pointing at the
+        // stale brush, which is why recoloring used to look like it did nothing.
+        if (resources[brushKey] is SolidColorBrush brush)
+        {
+            brush.Color = winColor;
+        }
+        else
+        {
+            resources[brushKey] = new SolidColorBrush(winColor);
+        }
     }
 
     private static Color ToColor(Argb c) => Color.FromArgb(c.A, c.R, c.G, c.B);

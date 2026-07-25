@@ -43,8 +43,30 @@ public sealed partial class DetailsWindow : Window
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
         AppWindow.GetFromWindowId(id).Resize(new SizeInt32(780, 780));
         runtime.StateChanged += Runtime_StateChanged;
-        Closed += (_, _) => runtime.StateChanged -= Runtime_StateChanged;
+        Closed += (_, _) => OnClosedAsync();
         DetailsRoot.Loaded += DetailsRoot_Loaded;
+    }
+
+    private async void OnClosedAsync()
+    {
+        runtime.StateChanged -= Runtime_StateChanged;
+
+        // Flush any in-flight appearance edit so the user's last change is not
+        // lost to the debounce timer when the window closes. Without this the
+        // widget would snap back to the previously saved theme on exit.
+        appearanceSaveCts?.Cancel();
+        if (!Equals(runtime.Settings.Appearance, workingAppearance))
+        {
+            try
+            {
+                await runtime.SaveSettingsAsync(
+                    runtime.Settings with { Appearance = workingAppearance });
+            }
+            catch
+            {
+                // The window is closing; a failed flush must never throw.
+            }
+        }
     }
 
     private async void DetailsRoot_Loaded(object sender, RoutedEventArgs e)
@@ -172,7 +194,7 @@ public sealed partial class DetailsWindow : Window
         {
             Content = "Auto-detect providers & models",
             Background = Brush("QuotaDockAccentBrush"),
-            Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 34, 29)),
+            Foreground = Brush("QuotaDockOnAccentBrush"),
             Padding = new Thickness(14, 10, 14, 10),
             CornerRadius = new CornerRadius(4)
         };
@@ -696,7 +718,7 @@ public sealed partial class DetailsWindow : Window
                 Padding = new Thickness(12, 5, 12, 5),
                 CornerRadius = new CornerRadius(4),
                 Background = Brush("QuotaDockAccentBrush"),
-                Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 16, 34, 29))
+                Foreground = Brush("QuotaDockOnAccentBrush")
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
                 signIn, $"Sign in to {connection.AccountLabel}");

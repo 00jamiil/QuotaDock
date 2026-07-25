@@ -2,6 +2,12 @@
 
 All notable changes to QuotaDock are recorded here.
 
+## 0.4.1-alpha — 2026-07-25
+
+- Fix live theming so color, preset, and dark/light changes repaint both the widget and the settings window instantly. The shared brushes are now mutated in place instead of being replaced, which left existing bindings pointing at stale colors.
+- Flush a pending appearance edit when the settings window closes, so the last change is no longer lost to the save debounce and the widget stops reverting on exit.
+- Derive the on-accent text color for accent-filled buttons so their labels stay readable across custom palettes.
+
 ## 0.4.0-alpha — 2026-07-25
 
 - Add an Appearance settings tab: pick background, text, foreground, and accent colors with live preview; choose a color preset; switch dark/light mode; and pick a window theme — Default (solid), Glassy (frosted acrylic), or Mica. Card surfaces, borders, and progress tracks are derived from the chosen colors so a custom palette stays readable, and the on-accent text color flips for contrast.
