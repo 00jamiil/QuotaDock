@@ -2,6 +2,12 @@
 
 All notable changes to QuotaDock are recorded here.
 
+## 0.4.0-alpha — 2026-07-25
+
+- Add an Appearance settings tab: pick background, text, foreground, and accent colors with live preview; choose a color preset; switch dark/light mode; and pick a window theme — Default (solid), Glassy (frosted acrylic), or Mica. Card surfaces, borders, and progress tracks are derived from the chosen colors so a custom palette stays readable, and the on-accent text color flips for contrast.
+- Make metric cards collapsible into a compact quarter-height row (progress bar plus provider and usage name) through a global compact toggle that preserves the responsive multi-column layout.
+- Apply theme and color changes live across the widget and settings windows without a restart.
+
 ## 0.3.0-alpha — 2026-07-24
 
 - Narrow QuotaDock to the four local AI coding agents that expose sign-in-based usage: Codex, Claude, Grok, and Kimi. Organization admin APIs, OpenAI-compatible endpoints, and the Alibaba dashboard reader are removed.

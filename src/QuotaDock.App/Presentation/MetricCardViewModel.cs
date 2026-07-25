@@ -21,6 +21,7 @@ public sealed record MetricCardViewModel(
     bool HasProgress,
     bool IsStale,
     bool IsPinned,
+    bool IsCollapsed,
     string PaceText,
     string PaceColorKey)
 {
@@ -28,6 +29,10 @@ public sealed record MetricCardViewModel(
     public double ProgressOpacity => HasProgress ? 1d : 0d;
     public bool HasPace => PaceText.Length > 0;
     public Visibility PaceVisibility => HasPace ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ExpandedVisibility => IsCollapsed ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility CollapsedVisibility => IsCollapsed ? Visibility.Visible : Visibility.Collapsed;
+    public string CollapseGlyph => IsCollapsed ? "\uE70D" : "\uE70E";
+    public string CollapseTooltip => IsCollapsed ? "Expand all cards" : "Compact all cards";
     public Brush PaceBrush => (Brush)Application.Current.Resources[PaceColorKey];
     public Brush PinBrush => (Brush)Application.Current.Resources[IsPinned ? "QuotaDockAccentBrush" : "QuotaDockMutedBrush"];
     public string AutomationName =>
@@ -61,6 +66,7 @@ public sealed record MetricCardViewModel(
         var (paceText, paceColorKey) = DescribePace(
             UsagePace.Calculate(metric, snapshot.CapturedAt, now).Status);
         var isPinned = settings.PinnedMetricIds.Contains(key, StringComparer.Ordinal);
+        var isCollapsed = settings.CompactCards;
 
         return new MetricCardViewModel(
             key,
@@ -83,6 +89,7 @@ public sealed record MetricCardViewModel(
             limit is > 0m,
             snapshot.Health == ConnectionHealth.Stale,
             isPinned,
+            isCollapsed,
             paceText,
             paceColorKey);
     }

@@ -12,7 +12,7 @@
         x:Name="WidgetRoot"
         AutomationProperties.AutomationId="WidgetRoot"
         AutomationProperties.Name="QuotaDock usage widget"
-        Background="{StaticResource QuotaDockCanvasBrush}">
+        Background="{ThemeResource QuotaDockCanvasBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="52" />
             <RowDefinition Height="Auto" />
@@ -28,14 +28,15 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <Grid x:Name="DragRegion" Grid.Column="0" Background="Transparent">
                 <StackPanel VerticalAlignment="Center" Orientation="Horizontal" Spacing="9">
-                    <Border Width="22" Height="22" CornerRadius="7" Background="{StaticResource QuotaDockAccentBrush}">
+                    <Border Width="22" Height="22" CornerRadius="7" Background="{ThemeResource QuotaDockAccentBrush}">
                         <FontIcon
                             FontSize="12"
-                            Foreground="#10221D"
+                            Foreground="{ThemeResource QuotaDockOnAccentBrush}"
                             Glyph="&#xE9D9;"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
@@ -46,7 +47,7 @@
                         FontSize="13"
                         FontWeight="SemiBold"
                         CharacterSpacing="120"
-                        Foreground="{StaticResource QuotaDockTextBrush}"
+                        Foreground="{ThemeResource QuotaDockTextBrush}"
                         VerticalAlignment="Center" />
                 </StackPanel>
             </Grid>
@@ -81,6 +82,22 @@
                 ToolTipService.ToolTip="Connections and settings">
                 <FontIcon FontSize="14" Glyph="&#xE713;" />
             </Button>
+            <Button
+                x:Name="CloseButton"
+                Grid.Column="4"
+                AutomationProperties.AutomationId="CloseButton"
+                AutomationProperties.Name="Close window"
+                Click="CloseButton_Click"
+                Style="{StaticResource HeaderIconButtonStyle}"
+                ToolTipService.ToolTip="Close">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{StaticResource QuotaDockDangerColor}" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{StaticResource QuotaDockDangerColor}" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFF" />
+                </Button.Resources>
+                <FontIcon FontSize="14" Glyph="&#xE711;" />
+            </Button>
         </Grid>
 
         <!-- Provider tabs -->
@@ -102,8 +119,8 @@
             Grid.Row="2"
             Margin="14,2,14,10"
             Padding="13,10"
-            Background="{StaticResource QuotaDockSurfaceBrush}"
-            BorderBrush="#303949"
+            Background="{ThemeResource QuotaDockSurfaceBrush}"
+            BorderBrush="{ThemeResource QuotaDockBorderBrush}"
             BorderThickness="1"
             CornerRadius="6">
             <Grid>
@@ -111,7 +128,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Ellipse x:Name="HealthDot" Width="7" Height="7" Fill="{StaticResource QuotaDockMutedBrush}" VerticalAlignment="Center" />
+                <Ellipse x:Name="HealthDot" Width="7" Height="7" Fill="{ThemeResource QuotaDockMutedBrush}" VerticalAlignment="Center" />
                 <TextBlock
                     x:Name="StatusLabel"
                     Grid.Column="1"
@@ -119,7 +136,7 @@
                     AutomationProperties.AutomationId="StatusLabel"
                     Text="Connect a provider to begin"
                     FontSize="12"
-                    Foreground="{StaticResource QuotaDockMutedBrush}"
+                    Foreground="{ThemeResource QuotaDockMutedBrush}"
                     TextTrimming="CharacterEllipsis" />
             </Grid>
         </Border>
@@ -135,24 +152,19 @@
                 x:Name="MetricRepeater"
                 AutomationProperties.AutomationId="MetricList"
                 AutomationProperties.Name="Usage metrics">
-                <muxc:ItemsRepeater.Layout>
-                    <muxc:UniformGridLayout
-                        MinItemWidth="280"
-                        MinItemHeight="150"
-                        MinRowSpacing="8"
-                        MinColumnSpacing="8"
-                        ItemsStretch="Fill" />
-                </muxc:ItemsRepeater.Layout>
                 <muxc:ItemsRepeater.ItemTemplate>
                 <DataTemplate>
                     <Border
-                        Padding="14,12"
                         AutomationProperties.Name="{Binding AutomationName}"
-                        Background="{StaticResource QuotaDockSurfaceBrush}"
-                        BorderBrush="#303949"
+                        Background="{ThemeResource QuotaDockSurfaceBrush}"
+                        BorderBrush="{ThemeResource QuotaDockBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="6">
-                        <Grid RowSpacing="7">
+                        <Grid>
+                            <Grid
+                                Padding="14,12"
+                                RowSpacing="7"
+                                Visibility="{Binding ExpandedVisibility}">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
@@ -163,6 +175,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
@@ -206,6 +219,23 @@
                                     VerticalContentAlignment="Center">
                                     <FontIcon FontSize="13" Glyph="&#xE840;" Foreground="{Binding PinBrush}" />
                                 </Button>
+                                <Button
+                                    Grid.Column="3"
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    Tag="{Binding Key}"
+                                    Click="CollapseToggle_Click"
+                                    AutomationProperties.Name="{Binding CollapseTooltip}"
+                                    ToolTipService.ToolTip="{Binding CollapseTooltip}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="6"
+                                    VerticalAlignment="Top"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center">
+                                    <FontIcon FontSize="12" Glyph="{Binding CollapseGlyph}" Foreground="{ThemeResource QuotaDockMutedBrush}" />
+                                </Button>
                             </Grid>
                             <ProgressBar
                                 Grid.Row="1"
@@ -245,6 +275,68 @@
                                 FontWeight="SemiBold"
                                 Foreground="{Binding PaceBrush}" />
                         </Grid>
+
+                            <!-- Collapsed: a compact quarter-height row. -->
+                            <Grid
+                                Padding="12,9"
+                                ColumnSpacing="10"
+                                Visibility="{Binding CollapsedVisibility}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock
+                                        Text="{Binding Provider}"
+                                        FontSize="9"
+                                        FontWeight="SemiBold"
+                                        CharacterSpacing="100"
+                                        Foreground="{ThemeResource QuotaDockAccentBrush}" />
+                                    <TextBlock
+                                        Text="{Binding Label}"
+                                        FontSize="12"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource QuotaDockTextBrush}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <ProgressBar
+                                    Grid.Column="1"
+                                    Height="4"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Value="{Binding ProgressPercent}"
+                                    Opacity="{Binding ProgressOpacity}"
+                                    Foreground="{ThemeResource QuotaDockAccentBrush}"
+                                    Background="{ThemeResource QuotaDockTrackBrush}"
+                                    VerticalAlignment="Center" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Text="{Binding Value}"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="{ThemeResource QuotaDockTextBrush}"
+                                    VerticalAlignment="Center" />
+                                <Button
+                                    Grid.Column="3"
+                                    Width="26"
+                                    Height="26"
+                                    Padding="0"
+                                    Tag="{Binding Key}"
+                                    Click="CollapseToggle_Click"
+                                    AutomationProperties.Name="{Binding CollapseTooltip}"
+                                    ToolTipService.ToolTip="{Binding CollapseTooltip}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="6"
+                                    VerticalAlignment="Center"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center">
+                                    <FontIcon FontSize="11" Glyph="{Binding CollapseGlyph}" Foreground="{ThemeResource QuotaDockMutedBrush}" />
+                                </Button>
+                            </Grid>
+                        </Grid>
                     </Border>
                 </DataTemplate>
                 </muxc:ItemsRepeater.ItemTemplate>
@@ -253,19 +345,19 @@
 
         <Grid Grid.Row="3" x:Name="EmptyState" Margin="28,8,28,20">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                <FontIcon x:Name="EmptyIcon" Glyph="&#xE945;" FontSize="24" Foreground="{StaticResource QuotaDockMutedBrush}" />
+                <FontIcon x:Name="EmptyIcon" Glyph="&#xE945;" FontSize="24" Foreground="{ThemeResource QuotaDockMutedBrush}" />
                 <TextBlock
                     x:Name="EmptyTitle"
                     Text="Your AI limits, one glance away."
                     FontSize="15"
                     FontWeight="SemiBold"
-                    Foreground="{StaticResource QuotaDockTextBrush}"
+                    Foreground="{ThemeResource QuotaDockTextBrush}"
                     TextAlignment="Center" />
                 <TextBlock
                     x:Name="EmptySubtitle"
                     Text="Connect Codex, Claude, Grok, or Kimi to start tracking usage."
                     FontSize="12"
-                    Foreground="{StaticResource QuotaDockMutedBrush}"
+                    Foreground="{ThemeResource QuotaDockMutedBrush}"
                     TextAlignment="Center"
                     TextWrapping="Wrap" />
                 <Button
@@ -290,7 +382,7 @@
                 x:Name="FreshnessLabel"
                 Text="No local snapshots"
                 FontSize="11"
-                Foreground="{StaticResource QuotaDockMutedBrush}"
+                Foreground="{ThemeResource QuotaDockMutedBrush}"
                 VerticalAlignment="Center" />
             <TextBlock
                 Grid.Column="1"
@@ -298,7 +390,7 @@
                 FontSize="10"
                 FontWeight="SemiBold"
                 CharacterSpacing="110"
-                Foreground="{StaticResource QuotaDockAccentBrush}"
+                Foreground="{ThemeResource QuotaDockAccentBrush}"
                 VerticalAlignment="Center" />
             <Button
                 Grid.Column="2"

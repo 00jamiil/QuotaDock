@@ -15,6 +15,9 @@
             <Color x:Key="QuotaDockAccentColor">#62D6B5</Color>
             <Color x:Key="QuotaDockWarningColor">#F2BA55</Color>
             <Color x:Key="QuotaDockDangerColor">#FA7A86</Color>
+            <Color x:Key="QuotaDockOnAccentColor">#10221D</Color>
+            <Color x:Key="QuotaDockBorderColor">#2B3341</Color>
+            <Color x:Key="QuotaDockTrackColor">#303848</Color>
 
             <SolidColorBrush x:Key="QuotaDockCanvasBrush" Color="{StaticResource QuotaDockCanvasColor}" />
             <SolidColorBrush x:Key="QuotaDockSurfaceBrush" Color="{StaticResource QuotaDockSurfaceColor}" />
@@ -24,6 +27,9 @@
             <SolidColorBrush x:Key="QuotaDockAccentBrush" Color="{StaticResource QuotaDockAccentColor}" />
             <SolidColorBrush x:Key="QuotaDockWarningBrush" Color="{StaticResource QuotaDockWarningColor}" />
             <SolidColorBrush x:Key="QuotaDockDangerBrush" Color="{StaticResource QuotaDockDangerColor}" />
+            <SolidColorBrush x:Key="QuotaDockOnAccentBrush" Color="{StaticResource QuotaDockOnAccentColor}" />
+            <SolidColorBrush x:Key="QuotaDockBorderBrush" Color="{StaticResource QuotaDockBorderColor}" />
+            <SolidColorBrush x:Key="QuotaDockTrackBrush" Color="{StaticResource QuotaDockTrackColor}" />
 
             <Style x:Key="HeaderIconButtonStyle" TargetType="Button">
                 <Setter Property="Width" Value="32" />
@@ -31,7 +37,7 @@
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="CornerRadius" Value="8" />
                 <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="{StaticResource QuotaDockMutedBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource QuotaDockMutedBrush}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="HorizontalContentAlignment" Value="Center" />
                 <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -44,8 +50,8 @@
             <CornerRadius x:Key="QuotaDockPillCorner">4</CornerRadius>
 
             <Style x:Key="QuotaDockCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{StaticResource QuotaDockSurfaceBrush}" />
-                <Setter Property="BorderBrush" Value="#2B3341" />
+                <Setter Property="Background" Value="{ThemeResource QuotaDockSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource QuotaDockBorderBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="{StaticResource QuotaDockCardCorner}" />
                 <Setter Property="Padding" Value="16" />

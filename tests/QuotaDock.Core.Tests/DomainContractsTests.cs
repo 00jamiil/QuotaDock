@@ -17,6 +17,8 @@ public sealed class DomainContractsTests
         Assert.False(settings.StartWithWindows);
         Assert.Empty(settings.PinnedMetricIds);
         Assert.Empty(settings.SoftBudgets);
+        Assert.NotNull(settings.Appearance);
+        Assert.False(settings.CompactCards);
         Assert.Empty(settings.Notifications);
     }
 

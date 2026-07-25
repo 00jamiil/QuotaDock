@@ -20,6 +20,17 @@ public sealed partial class DetailsWindow : Window
     private readonly QuotaDockRuntime runtime;
     private readonly CodexCliLocator codexCliLocator = new();
     private bool rebuilding;
+    private AppearanceSettings workingAppearance = AppearanceSettings.Default;
+    private bool syncingAppearance;
+    private CancellationTokenSource? appearanceSaveCts;
+    private ColorPicker? cpBackground;
+    private ColorPicker? cpText;
+    private ColorPicker? cpForeground;
+    private ColorPicker? cpAccent;
+    private ComboBox? themeCombo;
+    private ComboBox? presetCombo;
+    private Button? darkModeButton;
+    private Button? lightModeButton;
 
     public DetailsWindow(QuotaDockRuntime runtime)
     {
@@ -52,6 +63,7 @@ public sealed partial class DetailsWindow : Window
         rebuilding = true;
         try
         {
+            workingAppearance = runtime.Settings.Appearance;
             var selectedTag = (ProviderTabs.SelectedItem as TabViewItem)?.Tag as string;
             ProviderTabs.TabItems.Clear();
 
@@ -60,12 +72,14 @@ public sealed partial class DetailsWindow : Window
                 ProviderTabs.TabItems.Add(BuildProviderTab(provider));
             }
 
+            ProviderTabs.TabItems.Add(BuildAppearanceTab());
             ProviderTabs.TabItems.Add(BuildConnectTab());
 
             var restore = ProviderTabs.TabItems
                 .OfType<TabViewItem>()
                 .FirstOrDefault(item => (item.Tag as string) == selectedTag);
             ProviderTabs.SelectedItem = restore ?? ProviderTabs.TabItems.FirstOrDefault();
+            ApplyTheme();
         }
         catch
         {
@@ -200,6 +214,355 @@ public sealed partial class DetailsWindow : Window
             }
         };
     }
+
+    // ---- Appearance -------------------------------------------------------
+
+    private TabViewItem BuildAppearanceTab()
+    {
+        var content = new StackPanel { Spacing = 14, Padding = new Thickness(6, 14, 6, 20) };
+
+        content.Children.Add(SectionLabel("THEME"));
+        themeCombo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, Header = "Window style" };
+        foreach (var option in new (string Label, ThemeKind Kind)[]
+                 {
+                     ("Default — solid", ThemeKind.Default),
+                     ("Glassy — frosted glass", ThemeKind.Glassy),
+                     ("Mica — subtle material", ThemeKind.Mica)
+                 })
+        {
+            themeCombo.Items.Add(new ComboBoxItem { Content = option.Label, Tag = option.Kind });
+        }
+        SelectThemeCombo(workingAppearance.Theme);
+        themeCombo.SelectionChanged += OnThemeChanged;
+        content.Children.Add(Card(themeCombo));
+
+        content.Children.Add(SectionLabel("MODE"));
+        darkModeButton = ModeButton("Dark", ColorMode.Dark);
+        lightModeButton = ModeButton("Light", ColorMode.Light);
+        var modeRow = new Grid { ColumnSpacing = 8 };
+        modeRow.ColumnDefinitions.Add(new ColumnDefinition());
+        modeRow.ColumnDefinitions.Add(new ColumnDefinition());
+        modeRow.Children.Add(darkModeButton);
+        Grid.SetColumn(lightModeButton, 1);
+        modeRow.Children.Add(lightModeButton);
+        UpdateModeButtons();
+        content.Children.Add(Card(modeRow));
+
+        content.Children.Add(SectionLabel("COLOR PRESET"));
+        presetCombo = new ComboBox { HorizontalAlignment = HorizontalAlignment.Stretch, Header = "Palette" };
+        presetCombo.Items.Add(new ComboBoxItem { Content = "Custom", Tag = "Custom" });
+        foreach (var preset in AppearancePresets.All)
+        {
+            presetCombo.Items.Add(new ComboBoxItem { Content = preset.Name, Tag = preset.Name });
+        }
+        SelectPresetCombo(workingAppearance.Preset);
+        presetCombo.SelectionChanged += OnPresetChanged;
+        content.Children.Add(Card(presetCombo));
+
+        content.Children.Add(SectionLabel("COLORS"));
+        cpBackground = MakePicker(workingAppearance.Background);
+        cpText = MakePicker(workingAppearance.Text);
+        cpForeground = MakePicker(workingAppearance.Foreground);
+        cpAccent = MakePicker(workingAppearance.Accent);
+        cpBackground.ColorChanged += (s, _) => OnPickerColor(s, "bg");
+        cpText.ColorChanged += (s, _) => OnPickerColor(s, "text");
+        cpForeground.ColorChanged += (s, _) => OnPickerColor(s, "fg");
+        cpAccent.ColorChanged += (s, _) => OnPickerColor(s, "accent");
+        var bgField = PickerField("Background", cpBackground);
+        var textField = PickerField("Text", cpText);
+        var fgField = PickerField("Foreground", cpForeground);
+        var accentField = PickerField("Accent", cpAccent);
+        var colorGrid = new Grid { ColumnSpacing = 12, RowSpacing = 12 };
+        colorGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        colorGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        colorGrid.RowDefinitions.Add(new RowDefinition());
+        colorGrid.RowDefinitions.Add(new RowDefinition());
+        colorGrid.Children.Add(bgField);
+        Grid.SetColumn(textField, 1);
+        colorGrid.Children.Add(textField);
+        Grid.SetRow(fgField, 1);
+        colorGrid.Children.Add(fgField);
+        Grid.SetRow(accentField, 1);
+        Grid.SetColumn(accentField, 1);
+        colorGrid.Children.Add(accentField);
+        content.Children.Add(Card(colorGrid));
+
+        var reset = new Button
+        {
+            Content = "Reset appearance",
+            Padding = new Thickness(14, 7, 14, 7),
+            CornerRadius = new CornerRadius(4),
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        reset.Click += ResetAppearance_Click;
+        content.Children.Add(reset);
+
+        return new TabViewItem
+        {
+            Header = "Appearance",
+            Tag = "appearance",
+            IsClosable = false,
+            IconSource = new FontIconSource { Glyph = "\uE790" },
+            Content = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            }
+        };
+    }
+
+    private ColorPicker MakePicker(string hex) => new()
+    {
+        Width = 240,
+        HorizontalAlignment = HorizontalAlignment.Left,
+        IsMoreButtonVisible = false,
+        IsAlphaEnabled = false,
+        IsAlphaSliderVisible = false,
+        IsAlphaTextInputVisible = false,
+        IsColorSliderVisible = true,
+        IsColorChannelTextInputVisible = false,
+        IsHexInputVisible = true,
+        IsColorPreviewVisible = true,
+        Color = ToWinColor(hex)
+    };
+
+    private static StackPanel PickerField(string label, ColorPicker picker)
+    {
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 12,
+            Foreground = Brush("QuotaDockMutedBrush")
+        });
+        stack.Children.Add(picker);
+        return stack;
+    }
+
+    private Button ModeButton(string label, ColorMode mode)
+    {
+        var button = new Button
+        {
+            Content = label,
+            Tag = mode,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(0)
+        };
+        button.Click += (_, _) => OnModeClick(mode);
+        return button;
+    }
+
+    private void OnThemeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (syncingAppearance || themeCombo is null)
+        {
+            return;
+        }
+
+        if (themeCombo.SelectedItem is ComboBoxItem { Tag: ThemeKind kind } && kind != workingAppearance.Theme)
+        {
+            workingAppearance = workingAppearance with { Theme = kind };
+            CommitWorking(syncPickers: false);
+        }
+    }
+
+    private void OnPresetChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (syncingAppearance || presetCombo is null)
+        {
+            return;
+        }
+
+        if (presetCombo.SelectedItem is ComboBoxItem { Tag: string name } &&
+            !string.Equals(name, workingAppearance.Preset, StringComparison.OrdinalIgnoreCase) &&
+            AppearancePresets.FindByName(name) is { } preset)
+        {
+            workingAppearance = preset.Appearance with { Theme = workingAppearance.Theme, Preset = name };
+            CommitWorking(syncPickers: true);
+        }
+    }
+
+    private void OnModeClick(ColorMode mode)
+    {
+        if (mode == workingAppearance.Mode)
+        {
+            return;
+        }
+
+        var baseAppearance = (mode == ColorMode.Dark
+                ? AppearancePresets.FindByName("Default")
+                : AppearancePresets.FindByName("Light"))?.Appearance ?? workingAppearance;
+        workingAppearance = workingAppearance with
+        {
+            Mode = mode,
+            Background = baseAppearance.Background,
+            Text = baseAppearance.Text,
+            Foreground = baseAppearance.Foreground,
+            Preset = "Custom"
+        };
+        CommitWorking(syncPickers: true);
+    }
+
+    private void OnPickerColor(ColorPicker picker, string which)
+    {
+        if (syncingAppearance)
+        {
+            return;
+        }
+
+        var hex = HexOf(picker.Color);
+        var current = which switch
+        {
+            "bg" => workingAppearance.Background,
+            "text" => workingAppearance.Text,
+            "fg" => workingAppearance.Foreground,
+            _ => workingAppearance.Accent
+        };
+        if (string.Equals(hex, current, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        workingAppearance = which switch
+        {
+            "bg" => workingAppearance with { Background = hex, Preset = "Custom" },
+            "text" => workingAppearance with { Text = hex, Preset = "Custom" },
+            "fg" => workingAppearance with { Foreground = hex, Preset = "Custom" },
+            _ => workingAppearance with { Accent = hex, Preset = "Custom" }
+        };
+        CommitWorking(syncPickers: false);
+    }
+
+    private void ResetAppearance_Click(object sender, RoutedEventArgs e)
+    {
+        workingAppearance = AppearanceSettings.Default with { Theme = workingAppearance.Theme };
+        CommitWorking(syncPickers: true);
+    }
+
+    private void CommitWorking(bool syncPickers)
+    {
+        ThemeApplier.ApplyBrushes(workingAppearance);
+        ThemeApplier.ApplyToAll(workingAppearance);
+        if (syncPickers)
+        {
+            SyncAppearanceControls();
+        }
+
+        _ = DebounceSaveAsync();
+    }
+
+    private void SyncAppearanceControls()
+    {
+        syncingAppearance = true;
+        try
+        {
+            if (cpBackground is not null)
+            {
+                cpBackground.Color = ToWinColor(workingAppearance.Background);
+            }
+
+            if (cpText is not null)
+            {
+                cpText.Color = ToWinColor(workingAppearance.Text);
+            }
+
+            if (cpForeground is not null)
+            {
+                cpForeground.Color = ToWinColor(workingAppearance.Foreground);
+            }
+
+            if (cpAccent is not null)
+            {
+                cpAccent.Color = ToWinColor(workingAppearance.Accent);
+            }
+
+            SelectPresetCombo(workingAppearance.Preset);
+            UpdateModeButtons();
+        }
+        finally
+        {
+            syncingAppearance = false;
+        }
+    }
+
+    private async Task DebounceSaveAsync()
+    {
+        appearanceSaveCts?.Cancel();
+        using var cts = new CancellationTokenSource();
+        appearanceSaveCts = cts;
+        try
+        {
+            await Task.Delay(250, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        await runtime.SaveSettingsAsync(runtime.Settings with { Appearance = workingAppearance });
+    }
+
+    private void UpdateModeButtons()
+    {
+        StyleModeButton(darkModeButton, workingAppearance.Mode == ColorMode.Dark);
+        StyleModeButton(lightModeButton, workingAppearance.Mode == ColorMode.Light);
+    }
+
+    private void StyleModeButton(Button? button, bool selected)
+    {
+        if (button is null)
+        {
+            return;
+        }
+
+        button.Background = selected
+            ? Brush("QuotaDockAccentBrush")
+            : new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+        button.Foreground = selected ? Brush("QuotaDockOnAccentBrush") : Brush("QuotaDockMutedBrush");
+    }
+
+    private void SelectThemeCombo(ThemeKind theme)
+    {
+        if (themeCombo is null)
+        {
+            return;
+        }
+
+        themeCombo.SelectedItem = themeCombo.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag is ThemeKind tag && tag == theme);
+    }
+
+    private void SelectPresetCombo(string name)
+    {
+        if (presetCombo is null)
+        {
+            return;
+        }
+
+        presetCombo.SelectedItem = presetCombo.Items
+            .OfType<ComboBoxItem>()
+            .FirstOrDefault(item => string.Equals(item.Tag as string, name, StringComparison.OrdinalIgnoreCase))
+            ?? presetCombo.Items.OfType<ComboBoxItem>().FirstOrDefault();
+    }
+
+    private void ApplyTheme()
+    {
+        ThemeApplier.ApplyBrushes(workingAppearance);
+        ThemeApplier.ApplyToWindow(this, workingAppearance);
+    }
+
+    private static Windows.UI.Color ToWinColor(string hex)
+    {
+        var c = ThemePalette.ParseHex(hex, new Argb(255, 98, 214, 181));
+        return Windows.UI.Color.FromArgb(c.A, c.R, c.G, c.B);
+    }
+
+    private static string HexOf(Windows.UI.Color color) =>
+        ThemePalette.ToHex(new Argb(color.A, color.R, color.G, color.B));
 
     private Border BuildStartupCard()
     {

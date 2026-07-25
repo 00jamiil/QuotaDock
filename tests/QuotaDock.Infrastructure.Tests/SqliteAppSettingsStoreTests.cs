@@ -64,4 +64,29 @@ public sealed class SqliteAppSettingsStoreTests : IAsyncLifetime
         Assert.True(actual.Insights.CompactMode);
         Assert.True(actual.Insights.ResetCelebration);
     }
+
+    [Fact]
+    public async Task SaveAndLoad_RoundTripsAppearanceAndCompactCards()
+    {
+        var expected = AppSettings.Default with
+        {
+            Appearance = new AppearanceSettings
+            {
+                Theme = ThemeKind.Glassy,
+                Mode = ColorMode.Light,
+                Preset = "Ocean",
+                Background = "#0E1726",
+                Text = "#EAF2FF",
+                Foreground = "#8FA6C7",
+                Accent = "#4FA8FF"
+            },
+            CompactCards = true
+        };
+
+        await store.SaveAsync(expected);
+        var actual = await store.LoadAsync();
+
+        Assert.Equal(expected.Appearance, actual.Appearance);
+        Assert.True(actual.CompactCards);
+    }
 }

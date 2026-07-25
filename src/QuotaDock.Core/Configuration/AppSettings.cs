@@ -49,6 +49,15 @@ public sealed record AppSettings(
     IReadOnlyDictionary<string, NotificationPreference> Notifications,
     InsightPreferences Insights)
 {
+    /// <summary>
+    /// Colors, mode, theme, and active preset. Init-only with a safe default so
+    /// older settings payloads (without this field) deserialize cleanly.
+    /// </summary>
+    public AppearanceSettings Appearance { get; init; } = AppearanceSettings.Default;
+
+    /// <summary>When true the widget shows every card as a compact quarter-height row.</summary>
+    public bool CompactCards { get; init; }
+
     public static AppSettings Default { get; } = new(
         WindowPlacement.Default,
         false,

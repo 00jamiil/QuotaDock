@@ -34,12 +34,29 @@ public sealed partial class MainWindow : Window
     private bool isPinned;
     private bool closeAllowed;
     private bool initialized;
+    private readonly UniformGridLayout expandedLayout = new()
+    {
+        MinItemWidth = 280,
+        MinItemHeight = 150,
+        MinColumnSpacing = 8,
+        MinRowSpacing = 8,
+        ItemsStretch = UniformGridLayoutItemsStretch.Fill
+    };
+    private readonly UniformGridLayout compactLayout = new()
+    {
+        MinItemWidth = 240,
+        MinItemHeight = 46,
+        MinColumnSpacing = 8,
+        MinRowSpacing = 8,
+        ItemsStretch = UniformGridLayoutItemsStretch.Fill
+    };
 
     public MainWindow(QuotaDockRuntime runtime)
     {
         this.runtime = runtime;
         InitializeComponent();
         MetricRepeater.ItemsSource = activeCards;
+        MetricRepeater.Layout = expandedLayout;
         ConfigureNativeWindow();
         WindowStyleHelper.Apply(this, useMica: false);
         WidgetRoot.Loaded += WidgetRoot_Loaded;
@@ -49,7 +66,6 @@ public sealed partial class MainWindow : Window
     internal void AllowClose()
     {
         closeAllowed = true;
-        trayIcon?.Dispose();
     }
 
     internal void ToggleVisibility()
@@ -79,14 +95,16 @@ public sealed partial class MainWindow : Window
         presenter = appWindow.Presenter as OverlappedPresenter;
         if (presenter is not null)
         {
+            // Keep the native frame (so DWM can round the corners and the window
+            // stays resizable) but drop the system title bar entirely. WinUI 3
+            // draws its caption buttons as an overlay whenever the title bar is
+            // present, and that overlay is what was landing on top of the app's
+            // own header buttons — turning the title bar off removes it for good.
+            presenter.SetBorderAndTitleBar(true, false);
             presenter.IsResizable = true;
             presenter.IsMaximizable = true;
             presenter.IsMinimizable = false;
         }
-
-        // Hide caption buttons (close/min/max) while keeping the window frame
-        // that DWM needs for rounded corners.
-        WindowStyleHelper.HideCaptionButtons(handle);
 
         if (!runtime.IsEndToEndMode)
         {
@@ -130,6 +148,7 @@ public sealed partial class MainWindow : Window
             await runtime.InitializeAsync();
             BuildTabStrip();
             RestoreWindowPlacement();
+            ApplyTheme();
             RebuildContent();
         }
         catch
@@ -183,7 +202,7 @@ public sealed partial class MainWindow : Window
                 ? ResourceBrush("QuotaDockAccentBrush")
                 : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
             tab.Foreground = isSelected
-                ? new SolidColorBrush(Color.FromArgb(255, 16, 34, 29))
+                ? ResourceBrush("QuotaDockOnAccentBrush")
                 : ResourceBrush("QuotaDockMutedBrush");
         }
     }
@@ -235,12 +254,14 @@ public sealed partial class MainWindow : Window
                 activeCards.Add(card);
             }
 
+            MetricRepeater.Layout = runtime.Settings.CompactCards ? compactLayout : expandedLayout;
             MetricRepeater.Visibility = activeCards.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             EmptyState.Visibility = activeCards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             UpdateEmptyState();
             UpdateStatus();
             UpdateFreshness(now);
             EvaluateNotifications();
+            ApplyTheme();
         }
         catch
         {
@@ -355,6 +376,22 @@ public sealed partial class MainWindow : Window
         await runtime.SaveSettingsAsync(runtime.Settings with { PinnedMetricIds = pins });
     }
 
+    private async void CollapseToggle_Click(object sender, RoutedEventArgs e)
+    {
+        // Collapse is a global compact mode: every card flips together so the
+        // responsive column layout stays uniform. The chevron on any card (or
+        // compact row) toggles it for all.
+        await runtime.SaveSettingsAsync(
+            runtime.Settings with { CompactCards = !runtime.Settings.CompactCards });
+    }
+
+    private void ApplyTheme()
+    {
+        ThemeApplier.ApplyBrushes(runtime.Settings.Appearance);
+        ThemeApplier.ApplyToWindow(this, runtime.Settings.Appearance);
+        UpdateTabStyles();
+    }
+
     private void EvaluateNotifications()
     {
         foreach (var snapshot in runtime.Snapshots)
@@ -445,6 +482,9 @@ public sealed partial class MainWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e) =>
         ((App)Application.Current).ShowDetails();
 
+    private void CloseButton_Click(object sender, RoutedEventArgs e) =>
+        ((App)Application.Current).ExitApplication();
+
     private void RestoreWindowPlacement()
     {
         if (appWindow is null)
@@ -484,7 +524,10 @@ public sealed partial class MainWindow : Window
             args.Cancel = true;
             await SaveWindowPlacementAsync();
             sender.Hide();
+            return;
         }
+
+        trayIcon?.Dispose();
     }
 
     private static Brush ResourceBrush(string key) =>

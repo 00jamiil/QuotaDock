@@ -17,10 +17,6 @@ internal static class WindowStyleHelper
     private const int GwlStyle = -16;
     private const int WsPopup = unchecked((int)0x80000000);
     private const int WsThickFrame = 0x00040000;
-    private const int WsCaption = 0x00C00000;
-    private const int WsSysMenu = 0x00080000;
-    private const int WsMinimizeBox = 0x00020000;
-    private const int WsMaximizeBox = 0x00010000;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
@@ -55,27 +51,6 @@ internal static class WindowStyleHelper
         if (useMica)
         {
             TryApplyMica(window);
-        }
-    }
-
-    /// <summary>
-    /// Hides all caption buttons (close, minimize, maximize) while keeping the
-    /// window frame that DWM needs for rounded corners. Call for frameless
-    /// widget-style windows.
-    /// </summary>
-    public static void HideCaptionButtons(nint hwnd)
-    {
-        try
-        {
-            var style = GetWindowLong(hwnd, GwlStyle);
-            style &= ~(WsSysMenu | WsMinimizeBox | WsMaximizeBox);
-            SetWindowLong(hwnd, GwlStyle, style);
-            SetWindowPos(hwnd, 0, 0, 0, 0, 0,
-                SwpNoMove | SwpNoSize | SwpNoZOrder | SwpFrameChanged);
-        }
-        catch
-        {
-            // Best-effort; the window still works without this.
         }
     }
 

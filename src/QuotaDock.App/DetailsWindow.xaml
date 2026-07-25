@@ -32,14 +32,14 @@
                     FontSize="10"
                     FontWeight="SemiBold"
                     CharacterSpacing="160"
-                    Foreground="{StaticResource QuotaDockAccentBrush}" />
+                    Foreground="{ThemeResource QuotaDockAccentBrush}" />
                 <TextBlock
                     Text="Accounts, limits &amp; local budgets"
                     Margin="0,5,0,0"
                     FontSize="24"
                     FontWeight="SemiBold"
                     FontFamily="Segoe UI Variable Display"
-                    Foreground="{StaticResource QuotaDockTextBrush}" />
+                    Foreground="{ThemeResource QuotaDockTextBrush}" />
             </StackPanel>
             <Button
                 Grid.Column="1"

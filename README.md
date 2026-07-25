@@ -2,7 +2,7 @@
 
 QuotaDock is a local-only Windows widget for monitoring AI usage without pretending that unlike units are interchangeable. It displays quota percentages, credits, tokens, requests, and currency with explicit used/remaining semantics, source health, timestamps, and reset countdowns.
 
-This repository contains the `0.3.0-alpha` x64 implementation. It uses native WinUI 3/XAML on .NET 10 and Windows App SDK 2.3.1. It focuses on the four local AI coding agents that expose sign-in-based usage: Codex, Claude, Grok, and Kimi.
+This repository contains the `0.4.0-alpha` x64 implementation. It uses native WinUI 3/XAML on .NET 10 and Windows App SDK 2.3.1. It focuses on the four local AI coding agents that expose sign-in-based usage: Codex, Claude, Grok, and Kimi.
 
 ## Provider coverage
 
