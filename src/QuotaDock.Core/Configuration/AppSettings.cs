@@ -55,8 +55,11 @@ public sealed record AppSettings(
     /// </summary>
     public AppearanceSettings Appearance { get; init; } = AppearanceSettings.Default;
 
-    /// <summary>When true the widget shows every card as a compact quarter-height row.</summary>
-    public bool CompactCards { get; init; }
+    /// <summary>Metric keys the user has collapsed to a compact row in the widget.</summary>
+    public IReadOnlyList<string> CollapsedMetricIds { get; init; } = [];
+
+    /// <summary>Metric keys the user has hidden from the widget entirely.</summary>
+    public IReadOnlyList<string> HiddenMetricIds { get; init; } = [];
 
     public static AppSettings Default { get; } = new(
         WindowPlacement.Default,

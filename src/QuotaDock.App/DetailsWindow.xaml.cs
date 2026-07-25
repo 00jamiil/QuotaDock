@@ -22,7 +22,10 @@ public sealed partial class DetailsWindow : Window
     private bool rebuilding;
     private AppearanceSettings workingAppearance = AppearanceSettings.Default;
     private bool syncingAppearance;
-    private CancellationTokenSource? appearanceSaveCts;
+    private bool appearanceDirty;
+    private TabViewItem? appearanceTab;
+    private TabView? modelTabs;
+    private Button? applyAppearanceButton;
     private ColorPicker? cpBackground;
     private ColorPicker? cpText;
     private ColorPicker? cpForeground;
@@ -51,22 +54,26 @@ public sealed partial class DetailsWindow : Window
     {
         runtime.StateChanged -= Runtime_StateChanged;
 
-        // Flush any in-flight appearance edit so the user's last change is not
-        // lost to the debounce timer when the window closes. Without this the
-        // widget would snap back to the previously saved theme on exit.
-        appearanceSaveCts?.Cancel();
-        if (!Equals(runtime.Settings.Appearance, workingAppearance))
+        // Appearance edits are only persisted through Apply. Anything left
+        // unapplied is a live preview, so closing the window rolls the other
+        // windows back to the saved look instead of silently keeping it.
+        if (appearanceDirty && !Equals(runtime.Settings.Appearance, workingAppearance))
         {
             try
             {
-                await runtime.SaveSettingsAsync(
-                    runtime.Settings with { Appearance = workingAppearance });
+                var saved = runtime.Settings.Appearance;
+                workingAppearance = saved;
+                appearanceDirty = false;
+                ThemeApplier.ApplyBrushes(saved);
+                ThemeApplier.ApplyToAll(saved);
             }
             catch
             {
-                // The window is closing; a failed flush must never throw.
+                // The window is closing; a failed rollback must never throw.
             }
         }
+
+        await Task.CompletedTask;
     }
 
     private async void DetailsRoot_Loaded(object sender, RoutedEventArgs e)
@@ -83,19 +90,23 @@ public sealed partial class DetailsWindow : Window
     private void Rebuild()
     {
         rebuilding = true;
+        syncingAppearance = true;
         try
         {
-            workingAppearance = runtime.Settings.Appearance;
-            var selectedTag = (ProviderTabs.SelectedItem as TabViewItem)?.Tag as string;
-            ProviderTabs.TabItems.Clear();
-
-            foreach (var provider in ConnectedProviders())
+            // Never clobber an unapplied appearance edit with the saved value:
+            // a background refresh must not throw away what the user is tuning.
+            if (!appearanceDirty)
             {
-                ProviderTabs.TabItems.Add(BuildProviderTab(provider));
+                workingAppearance = runtime.Settings.Appearance;
             }
 
-            ProviderTabs.TabItems.Add(BuildAppearanceTab());
-            ProviderTabs.TabItems.Add(BuildConnectTab());
+            var selectedTag = (ProviderTabs.SelectedItem as TabViewItem)?.Tag as string;
+            var selectedModelTag = (modelTabs?.SelectedItem as TabViewItem)?.Tag as string;
+            ProviderTabs.TabItems.Clear();
+
+            appearanceTab = BuildAppearanceTab();
+            ProviderTabs.TabItems.Add(appearanceTab);
+            ProviderTabs.TabItems.Add(BuildModelsTab(selectedModelTag));
 
             var restore = ProviderTabs.TabItems
                 .OfType<TabViewItem>()
@@ -111,6 +122,7 @@ public sealed partial class DetailsWindow : Window
         finally
         {
             rebuilding = false;
+            syncingAppearance = false;
         }
     }
 
@@ -124,6 +136,61 @@ public sealed partial class DetailsWindow : Window
     }
 
     private TabViewItem BuildProviderTab(ProviderKind provider)
+    {
+        var content = BuildProviderContent(provider);
+
+        return new TabViewItem
+        {
+            Header = ProviderDisplayName(provider),
+            Tag = $"provider:{provider}",
+            IsClosable = false,
+            IconSource = new FontIconSource { Glyph = ProviderGlyph(provider) },
+            Content = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            }
+        };
+    }
+
+    /// <summary>
+    /// The "Models" tab: an inner tab strip with one tab per connected provider
+    /// plus a persistent "Connect" tab, so settings stay two top-level tabs.
+    /// </summary>
+    private TabViewItem BuildModelsTab(string? selectedInnerTag)
+    {
+        modelTabs = new TabView
+        {
+            IsAddTabButtonVisible = false,
+            CanReorderTabs = false,
+            CanDragTabs = false,
+            TabWidthMode = TabViewWidthMode.Equal
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(modelTabs, "ModelTabs");
+
+        foreach (var provider in ConnectedProviders())
+        {
+            modelTabs.TabItems.Add(BuildProviderTab(provider));
+        }
+
+        modelTabs.TabItems.Add(BuildConnectTab());
+
+        var restore = modelTabs.TabItems
+            .OfType<TabViewItem>()
+            .FirstOrDefault(item => (item.Tag as string) == selectedInnerTag);
+        modelTabs.SelectedItem = restore ?? modelTabs.TabItems.FirstOrDefault();
+
+        return new TabViewItem
+        {
+            Header = "Models",
+            Tag = "models",
+            IsClosable = false,
+            IconSource = new FontIconSource { Glyph = "\uE9D9" },
+            Content = modelTabs
+        };
+    }
+
+    private StackPanel BuildProviderContent(ProviderKind provider)
     {
         var content = new StackPanel { Spacing = 14, Padding = new Thickness(6, 14, 6, 20) };
 
@@ -163,18 +230,7 @@ public sealed partial class DetailsWindow : Window
             content.Children.Add(SpendCard("Last 30 days", spend.LastThirtyDays));
         }
 
-        return new TabViewItem
-        {
-            Header = ProviderDisplayName(provider),
-            Tag = $"provider:{provider}",
-            IsClosable = false,
-            IconSource = new FontIconSource { Glyph = ProviderGlyph(provider) },
-            Content = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Content = content
-            }
-        };
+        return content;
     }
 
     private TabViewItem BuildConnectTab()
@@ -309,15 +365,39 @@ public sealed partial class DetailsWindow : Window
         colorGrid.Children.Add(accentField);
         content.Children.Add(Card(colorGrid));
 
+        // Apply is the only thing that writes to disk. Everything above is a
+        // live preview across every window, so the user can judge a palette
+        // before committing it.
+        applyAppearanceButton = new Button
+        {
+            Content = "Apply",
+            Padding = new Thickness(20, 8, 20, 8),
+            CornerRadius = new CornerRadius(4),
+            Background = Brush("QuotaDockAccentBrush"),
+            Foreground = Brush("QuotaDockOnAccentBrush")
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+            applyAppearanceButton, "ApplyAppearanceButton");
+        applyAppearanceButton.Click += ApplyAppearance_Click;
+
         var reset = new Button
         {
             Content = "Reset appearance",
-            Padding = new Thickness(14, 7, 14, 7),
-            CornerRadius = new CornerRadius(4),
-            HorizontalAlignment = HorizontalAlignment.Left
+            Padding = new Thickness(14, 8, 14, 8),
+            CornerRadius = new CornerRadius(4)
         };
         reset.Click += ResetAppearance_Click;
-        content.Children.Add(reset);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        actions.Children.Add(applyAppearanceButton);
+        actions.Children.Add(reset);
+        content.Children.Add(actions);
+        UpdateApplyButton();
 
         return new TabViewItem
         {
@@ -473,7 +553,36 @@ public sealed partial class DetailsWindow : Window
             SyncAppearanceControls();
         }
 
-        _ = DebounceSaveAsync();
+        appearanceDirty = !Equals(runtime.Settings.Appearance, workingAppearance);
+        UpdateApplyButton();
+    }
+
+    private async void ApplyAppearance_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await runtime.SaveSettingsAsync(runtime.Settings with { Appearance = workingAppearance });
+            appearanceDirty = false;
+            ThemeApplier.ApplyBrushes(workingAppearance);
+            ThemeApplier.ApplyToAll(workingAppearance);
+            UpdateApplyButton();
+            SetStatus("Appearance applied and saved for every window.", InfoBarSeverity.Success);
+        }
+        catch
+        {
+            SetStatus("Appearance could not be saved.", InfoBarSeverity.Error);
+        }
+    }
+
+    private void UpdateApplyButton()
+    {
+        if (applyAppearanceButton is null)
+        {
+            return;
+        }
+
+        applyAppearanceButton.Content = appearanceDirty ? "Apply changes" : "Applied";
+        applyAppearanceButton.IsEnabled = appearanceDirty;
     }
 
     private void SyncAppearanceControls()
@@ -508,23 +617,6 @@ public sealed partial class DetailsWindow : Window
         {
             syncingAppearance = false;
         }
-    }
-
-    private async Task DebounceSaveAsync()
-    {
-        appearanceSaveCts?.Cancel();
-        using var cts = new CancellationTokenSource();
-        appearanceSaveCts = cts;
-        try
-        {
-            await Task.Delay(250, cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        await runtime.SaveSettingsAsync(runtime.Settings with { Appearance = workingAppearance });
     }
 
     private void UpdateModeButtons()
@@ -809,6 +901,26 @@ public sealed partial class DetailsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(pin, $"Pin {metric.Label} to widget");
         pin.Click += Pin_Click;
 
+        // Show/hide controls whether the card appears in the widget at all.
+        var show = new CheckBox
+        {
+            Content = "Show",
+            Tag = key,
+            IsChecked = !runtime.Settings.HiddenMetricIds.Contains(key, StringComparer.Ordinal),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(show, $"Show {metric.Label} in the widget");
+        show.Click += ShowCard_Click;
+
+        var toggles = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        toggles.Children.Add(show);
+        toggles.Children.Add(pin);
+
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -828,7 +940,7 @@ public sealed partial class DetailsWindow : Window
                 Maximum = 100,
                 Value = (double)(fraction * 100m),
                 Foreground = Brush("QuotaDockAccentBrush"),
-                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 48, 56, 72))
+                Background = Brush("QuotaDockTrackBrush")
             });
         }
 
@@ -839,8 +951,8 @@ public sealed partial class DetailsWindow : Window
         }
 
         header.Children.Add(labelStack);
-        Grid.SetColumn(pin, 1);
-        header.Children.Add(pin);
+        Grid.SetColumn(toggles, 1);
+        header.Children.Add(toggles);
 
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(header);
@@ -1203,6 +1315,26 @@ public sealed partial class DetailsWindow : Window
         await runtime.SaveSettingsAsync(runtime.Settings with { PinnedMetricIds = pins });
     }
 
+    private async void ShowCard_Click(object sender, RoutedEventArgs e)
+    {
+        if (rebuilding || sender is not CheckBox { Tag: string key } checkBox)
+        {
+            return;
+        }
+
+        var hidden = runtime.Settings.HiddenMetricIds.ToList();
+        if (checkBox.IsChecked == true)
+        {
+            hidden.RemoveAll(item => string.Equals(item, key, StringComparison.Ordinal));
+        }
+        else if (!hidden.Contains(key, StringComparer.Ordinal))
+        {
+            hidden.Add(key);
+        }
+
+        await runtime.SaveSettingsAsync(runtime.Settings with { HiddenMetricIds = hidden });
+    }
+
     private async void SaveBudget_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: NumberBox { Tag: string key } box })
@@ -1303,7 +1435,7 @@ public sealed partial class DetailsWindow : Window
     {
         Padding = new Thickness(16),
         Background = Brush("QuotaDockSurfaceBrush"),
-        BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 43, 51, 65)),
+        BorderBrush = Brush("QuotaDockBorderBrush"),
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(6),
         Child = content

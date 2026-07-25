@@ -22,6 +22,9 @@ public partial class App : Application
         isEndToEndMode = Environment.GetCommandLineArgs()
             .Any(argument => string.Equals(argument, "--e2e", StringComparison.OrdinalIgnoreCase));
         runtime = new QuotaDockRuntime(isEndToEndMode);
+        // Force the first theme paint even when the saved appearance matches the
+        // XAML defaults; without this the no-op cache can leave brushes stale.
+        ThemeApplier.Invalidate();
         window = new MainWindow(runtime);
         window.Activate();
     }
@@ -33,8 +36,14 @@ public partial class App : Application
             return;
         }
 
-        detailsWindow ??= new DetailsWindow(runtime);
-        detailsWindow.Closed += (_, _) => detailsWindow = null;
+        // Only subscribe when the window is actually created; re-subscribing on
+        // every open would stack duplicate Closed handlers on the same window.
+        if (detailsWindow is null)
+        {
+            detailsWindow = new DetailsWindow(runtime);
+            detailsWindow.Closed += (_, _) => detailsWindow = null;
+        }
+
         detailsWindow.Activate();
     }
 
@@ -70,6 +79,7 @@ public partial class App : Application
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "QuotaDock",
                 "crash.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
             File.AppendAllText(
                 logPath,
                 $"[{DateTimeOffset.Now:O}] {args.Exception}{Environment.NewLine}");

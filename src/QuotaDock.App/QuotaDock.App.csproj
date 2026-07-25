@@ -12,8 +12,8 @@
     <PublishSingleFile>false</PublishSingleFile>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
-    <ApplicationDisplayVersion>0.4.1</ApplicationDisplayVersion>
-    <ApplicationVersion>5</ApplicationVersion>
+    <ApplicationDisplayVersion>0.4.2</ApplicationDisplayVersion>
+    <ApplicationVersion>6</ApplicationVersion>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Assets/**" CopyToOutputDirectory="PreserveNewest" />

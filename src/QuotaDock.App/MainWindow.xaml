@@ -185,13 +185,13 @@
                                         FontSize="10"
                                         FontWeight="SemiBold"
                                         CharacterSpacing="100"
-                                        Foreground="{StaticResource QuotaDockAccentBrush}" />
+                                        Foreground="{ThemeResource QuotaDockAccentBrush}" />
                                     <TextBlock
                                         Text="{Binding Label}"
                                         Margin="0,2,0,0"
                                         FontSize="14"
                                         FontWeight="SemiBold"
-                                        Foreground="{StaticResource QuotaDockTextBrush}"
+                                        Foreground="{ThemeResource QuotaDockTextBrush}"
                                         TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                                 <TextBlock
@@ -200,7 +200,7 @@
                                     Text="{Binding Value}"
                                     FontSize="18"
                                     FontWeight="SemiBold"
-                                    Foreground="{StaticResource QuotaDockTextBrush}"
+                                    Foreground="{ThemeResource QuotaDockTextBrush}"
                                     VerticalAlignment="Bottom" />
                                 <Button
                                     Grid.Column="2"
@@ -244,13 +244,13 @@
                                 Maximum="100"
                                 Value="{Binding ProgressPercent}"
                                 Opacity="{Binding ProgressOpacity}"
-                                Foreground="{StaticResource QuotaDockAccentBrush}"
-                                Background="#303848" />
+                                Foreground="{ThemeResource QuotaDockAccentBrush}"
+                                Background="{ThemeResource QuotaDockTrackBrush}" />
                             <TextBlock
                                 Grid.Row="2"
                                 Text="{Binding Detail}"
                                 FontSize="11"
-                                Foreground="{StaticResource QuotaDockMutedBrush}" />
+                                Foreground="{ThemeResource QuotaDockMutedBrush}" />
                             <Grid Grid.Row="3">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -259,13 +259,13 @@
                                 <TextBlock
                                     Text="{Binding Account}"
                                     FontSize="10"
-                                    Foreground="{StaticResource QuotaDockMutedBrush}"
+                                    Foreground="{ThemeResource QuotaDockMutedBrush}"
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
                                     Grid.Column="1"
                                     Text="{Binding Reset}"
                                     FontSize="10"
-                                    Foreground="{StaticResource QuotaDockMutedBrush}" />
+                                    Foreground="{ThemeResource QuotaDockMutedBrush}" />
                             </Grid>
                             <TextBlock
                                 Grid.Row="4"

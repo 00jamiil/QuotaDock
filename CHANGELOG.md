@@ -2,6 +2,16 @@
 
 All notable changes to QuotaDock are recorded here.
 
+## 0.4.2-alpha — 2026-07-26
+
+- Restructure settings into two top-level tabs: Appearance and Models. Models hosts Connect plus nested per-provider settings.
+- Add an explicit Apply button for appearance changes. Live preview stays available; Apply saves to disk and broadcasts the theme to every open window.
+- Collapse/expand now toggles only the clicked card through `CollapsedMetricIds`, with a wrap layout that keeps mixed card heights tidy.
+- Add hide/show toggles per metric card in Models settings, stored in `HiddenMetricIds` and respected by the widget.
+- Stop appearance controls from resetting to dark when provider tabs rebuild.
+- Fix title clipping in the settings header and replace hardcoded dark-only colors with theme brushes so light mode stays readable.
+- Refresh theme brushes on every launch so a previously saved palette always wins over App.xaml defaults.
+
 ## 0.4.1-alpha — 2026-07-25
 
 - Fix live theming so color, preset, and dark/light changes repaint both the widget and the settings window instantly. The shared brushes are now mutated in place instead of being replaced, which left existing bindings pointing at stale colors.

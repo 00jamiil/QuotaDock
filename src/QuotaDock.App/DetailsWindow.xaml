@@ -39,7 +39,7 @@
                     FontSize="24"
                     FontWeight="SemiBold"
                     FontFamily="Segoe UI Variable Display"
-                    Foreground="{ThemeResource QuotaDockTextBrush}" />
+                    TextTrimming="CharacterEllipsis" />
             </StackPanel>
             <Button
                 Grid.Column="1"

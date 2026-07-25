@@ -34,21 +34,11 @@ public sealed partial class MainWindow : Window
     private bool isPinned;
     private bool closeAllowed;
     private bool initialized;
-    private readonly UniformGridLayout expandedLayout = new()
+    private readonly WrapLayout wrapLayout = new()
     {
-        MinItemWidth = 280,
-        MinItemHeight = 150,
-        MinColumnSpacing = 8,
-        MinRowSpacing = 8,
-        ItemsStretch = UniformGridLayoutItemsStretch.Fill
-    };
-    private readonly UniformGridLayout compactLayout = new()
-    {
-        MinItemWidth = 240,
-        MinItemHeight = 46,
-        MinColumnSpacing = 8,
-        MinRowSpacing = 8,
-        ItemsStretch = UniformGridLayoutItemsStretch.Fill
+        DesiredColumnWidth = 280,
+        ColumnSpacing = 8,
+        RowSpacing = 8
     };
 
     public MainWindow(QuotaDockRuntime runtime)
@@ -56,7 +46,7 @@ public sealed partial class MainWindow : Window
         this.runtime = runtime;
         InitializeComponent();
         MetricRepeater.ItemsSource = activeCards;
-        MetricRepeater.Layout = expandedLayout;
+        MetricRepeater.Layout = wrapLayout;
         ConfigureNativeWindow();
         WindowStyleHelper.Apply(this, useMica: false);
         WidgetRoot.Loaded += WidgetRoot_Loaded;
@@ -254,7 +244,6 @@ public sealed partial class MainWindow : Window
                 activeCards.Add(card);
             }
 
-            MetricRepeater.Layout = runtime.Settings.CompactCards ? compactLayout : expandedLayout;
             MetricRepeater.Visibility = activeCards.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             EmptyState.Visibility = activeCards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             UpdateEmptyState();
@@ -274,6 +263,11 @@ public sealed partial class MainWindow : Window
 
     private IEnumerable<MetricCardViewModel> SelectedCards(MetricCardViewModel[] all)
     {
+        var hidden = runtime.Settings.HiddenMetricIds;
+        var visible = hidden.Count > 0
+            ? all.Where(card => !hidden.Contains(card.Key, StringComparer.Ordinal)).ToArray()
+            : all;
+
         if (selectedTab == HomeTab)
         {
             // Home shows the metrics the user pinned, in pin order. Before any
@@ -283,17 +277,17 @@ public sealed partial class MainWindow : Window
             if (pinned.Count > 0)
             {
                 return pinned
-                    .Select(key => all.FirstOrDefault(card => card.Key == key))
+                    .Select(key => visible.FirstOrDefault(card => card.Key == key))
                     .Where(card => card is not null)
                     .Cast<MetricCardViewModel>();
             }
 
-            return all;
+            return visible;
         }
 
         var provider = ParseProvider(selectedTab);
         return provider is { } kind
-            ? all.Where(card => card.ProviderKind == kind)
+            ? visible.Where(card => card.ProviderKind == kind)
             : [];
     }
 
@@ -378,11 +372,22 @@ public sealed partial class MainWindow : Window
 
     private async void CollapseToggle_Click(object sender, RoutedEventArgs e)
     {
-        // Collapse is a global compact mode: every card flips together so the
-        // responsive column layout stays uniform. The chevron on any card (or
-        // compact row) toggles it for all.
-        await runtime.SaveSettingsAsync(
-            runtime.Settings with { CompactCards = !runtime.Settings.CompactCards });
+        if (sender is not Button { Tag: string key })
+        {
+            return;
+        }
+
+        var collapsed = runtime.Settings.CollapsedMetricIds.ToList();
+        if (collapsed.Contains(key, StringComparer.Ordinal))
+        {
+            collapsed.RemoveAll(item => string.Equals(item, key, StringComparison.Ordinal));
+        }
+        else
+        {
+            collapsed.Add(key);
+        }
+
+        await runtime.SaveSettingsAsync(runtime.Settings with { CollapsedMetricIds = collapsed });
     }
 
     private void ApplyTheme()

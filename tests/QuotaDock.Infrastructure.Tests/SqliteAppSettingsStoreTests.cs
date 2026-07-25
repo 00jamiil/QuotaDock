@@ -66,7 +66,7 @@ public sealed class SqliteAppSettingsStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SaveAndLoad_RoundTripsAppearanceAndCompactCards()
+    public async Task SaveAndLoad_RoundTripsAppearanceAndCardVisibility()
     {
         var expected = AppSettings.Default with
         {
@@ -80,13 +80,15 @@ public sealed class SqliteAppSettingsStoreTests : IAsyncLifetime
                 Foreground = "#8FA6C7",
                 Accent = "#4FA8FF"
             },
-            CompactCards = true
+            CollapsedMetricIds = ["connection-a:spend"],
+            HiddenMetricIds = ["connection-b:tokens"]
         };
 
         await store.SaveAsync(expected);
         var actual = await store.LoadAsync();
 
         Assert.Equal(expected.Appearance, actual.Appearance);
-        Assert.True(actual.CompactCards);
+        Assert.Equal(["connection-a:spend"], actual.CollapsedMetricIds);
+        Assert.Equal(["connection-b:tokens"], actual.HiddenMetricIds);
     }
 }

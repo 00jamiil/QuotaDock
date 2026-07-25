@@ -32,7 +32,7 @@ public sealed record MetricCardViewModel(
     public Visibility ExpandedVisibility => IsCollapsed ? Visibility.Collapsed : Visibility.Visible;
     public Visibility CollapsedVisibility => IsCollapsed ? Visibility.Visible : Visibility.Collapsed;
     public string CollapseGlyph => IsCollapsed ? "\uE70D" : "\uE70E";
-    public string CollapseTooltip => IsCollapsed ? "Expand all cards" : "Compact all cards";
+    public string CollapseTooltip => IsCollapsed ? "Expand this card" : "Collapse this card";
     public Brush PaceBrush => (Brush)Application.Current.Resources[PaceColorKey];
     public Brush PinBrush => (Brush)Application.Current.Resources[IsPinned ? "QuotaDockAccentBrush" : "QuotaDockMutedBrush"];
     public string AutomationName =>
@@ -66,7 +66,7 @@ public sealed record MetricCardViewModel(
         var (paceText, paceColorKey) = DescribePace(
             UsagePace.Calculate(metric, snapshot.CapturedAt, now).Status);
         var isPinned = settings.PinnedMetricIds.Contains(key, StringComparer.Ordinal);
-        var isCollapsed = settings.CompactCards;
+        var isCollapsed = settings.CollapsedMetricIds.Contains(key, StringComparer.Ordinal);
 
         return new MetricCardViewModel(
             key,

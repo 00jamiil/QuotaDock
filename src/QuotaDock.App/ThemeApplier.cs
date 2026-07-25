@@ -23,6 +23,20 @@ internal static class ThemeApplier
     private static readonly ConditionalWeakTable<Window, Box> windowThemes = new();
     private static readonly List<WeakReference<Window>> windows = [];
 
+    /// <summary>
+    /// Drop the cached brush identity so the next <see cref="ApplyBrushes"/> call
+    /// rewrites the shared resources even when the appearance record is unchanged.
+    /// Useful after the app has been sitting with default XAML brushes that still
+    /// match the saved appearance on paper.
+    /// </summary>
+    public static void Invalidate()
+    {
+        lock (Gate)
+        {
+            appliedBrushes = null;
+        }
+    }
+
     /// <summary>Recolor the global brush resources. No-op when unchanged.</summary>
     public static void ApplyBrushes(AppearanceSettings appearance)
     {
@@ -153,6 +167,9 @@ internal static class ThemeApplier
 
     private sealed class Box
     {
-        public ThemeKind Value;
+        // Null until the first apply so the Default theme still clears whatever
+        // backdrop the window was constructed with (WindowStyleHelper applies
+        // Mica up front); otherwise "Default — solid" would silently stay Mica.
+        public ThemeKind? Value;
     }
 }
